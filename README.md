@@ -51,6 +51,6 @@ What happens if you mount a disk in use?
 ~~~~
     $ ./mfs rpv.dsk mnt
     WARNING: Not dismounted properly
-~~~
+~~~~
 
 
