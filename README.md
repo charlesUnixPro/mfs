@@ -44,7 +44,7 @@ To end:
 
 ~~~~
     $ fusermount -u mnt
-~~~
+~~~~
 
 What happens if you mount a disk in use?
 
