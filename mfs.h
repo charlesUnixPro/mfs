@@ -31,7 +31,11 @@ struct m_state
     char * * name_table;
     char * * fq_name_table;
     word36 * attr_table;
-    int vtoc_no;
+    int * sv_table;
+    int * vtoce_table;
+    int vtoc_no [3];
+    int total_vtoc_no;
+    int vtoc_cnt;
   };
 
 #define M_DATA ((struct m_state *) fuse_get_context () -> private_data)

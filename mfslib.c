@@ -345,6 +345,11 @@
 //            vfd       36/136*15/16        FIPS 3381
 //  
 
+// dcl  number_of_sv (9) fixed bin static options (constant) init /* table of subvolumes */
+//     (0, 0, 0, 0, 0, 0, 0, 2, 3);
+#define number_of_sv 3
+
+
 //  fs_dev_types_sector.incl.pl1
 //  
 //  dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
@@ -615,12 +620,16 @@ uint64_t extr (void * bits, int offset, int nbits)
   }
 
 
-static int r2s (int rec)
+static int r2s (int rec, int sv)
   {
     int usable = (sect_per_cyl / sect_per_rec) * sect_per_rec;
     int unusable = sect_per_cyl - usable;
     int sect = rec * sect_per_rec;
     sect = sect + (sect / usable) * unusable; 
+
+    int sect_offset = sect % sect_per_cyl;
+    sect = (sect - sect_offset) * number_of_sv + sv * sect_per_cyl +
+            sect_offset;
     return sect;
   }
 
@@ -638,9 +647,9 @@ static char * str (word36 w)
     return buf;
   }
 
-static void readRecord (int fd, int rec, record * data)
+static void readRecord (int fd, int rec, int sv, record * data)
   {
-    int sect = r2s (rec);
+    int sect = r2s (rec, sv);
 //fprintf (stderr, "rr rec %d sect %d\n", rec, sect);
     off_t n = lseek (fd, sect * SECTOR_SZ_IN_BYTES, SEEK_SET);
 //fprintf (stderr, "rr rec %d sect %d offset %d %o\n", rec, sect, sect * 512, sect * 512);
@@ -657,14 +666,14 @@ static word36 vtoc_origin = 8;
 static word36 vtoc_header = 4;
 typedef word36 VTOCE  [512];
 
-static void readVTOCE (int fd, int entNo, VTOCE * data)
+static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
   {
     // 2 VOTCE / record; VTOCE is at 8.
     int recOff = entNo / 2;
     int recNum = recOff + 8;
     record vtocepair;
     memset (& vtocepair, 0, sizeof (record));
-    readRecord (fd, recNum, & vtocepair);
+    readRecord (fd, recNum, sv, & vtocepair);
     int offset = (entNo & 1) ? 512 : 0;
     for (int i = 0; i < 512; i ++)
       (* data) [i] = extr36 (vtocepair, offset + i);
@@ -685,7 +694,7 @@ int mx_mount (struct m_state * m_data)
 
     record r0;
     memset (& r0, 0, sizeof (record));
-    readRecord (fd, 0, & r0);
+    readRecord (fd, 0, 0, & r0);
 #if 0
     for (int i = 0; i < 1024; i ++)
       {
@@ -773,43 +782,62 @@ int mx_mount (struct m_state * m_data)
     vtoc_header = 4;
 #endif
 
-    record vtoch;
-    memset (& vtoch, 0, sizeof (record));
-    readRecord (fd, vtoc_header, & vtoch);
-    //word36 n_vtoces = extr36 (vtoch, vtoc_header_n_vtoce_os);
-    //word36 n_free_vtoces = extr36 (vtoch, vtoc_header_n_free_vtoce);
-    word36 vtoc_last_recno = extr36 (vtoch, vtoc_header_vtoc_last_recno);
-    //fprintf (stderr, "n_vtoces %lu\n", n_vtoces);
+    m_data -> total_vtoc_no = 0;
+    for (int sv = 0; sv < 3; sv ++)
+      {
+        record vtoch;
+        memset (& vtoch, 0, sizeof (record));
+        readRecord (fd, vtoc_header, sv, & vtoch);
+        //word36 n_vtoces = extr36 (vtoch, vtoc_header_n_vtoce_os);
+        //word36 n_free_vtoces = extr36 (vtoch, vtoc_header_n_free_vtoce);
+        word36 vtoc_last_recno = extr36 (vtoch, vtoc_header_vtoc_last_recno);
+        //fprintf (stderr, "n_vtoces %lu\n", n_vtoces);
     
-    word36 vtoc_sz_recs = vtoc_last_recno + 1 - vtoc_origin;
-    m_data ->  vtoc_no = (int) (vtoc_sz_recs * 2);
-    //fprintf (stderr, "vtoc_no %lu\n", vtoc_no);
+        word36 vtoc_sz_recs = vtoc_last_recno + 1 - vtoc_origin;
+        m_data ->  vtoc_no [sv] = (int) (vtoc_sz_recs * 2);
+        m_data -> total_vtoc_no += m_data ->  vtoc_no [sv];
+        //fprintf (stderr, "vtoc_no %lu\n", vtoc_no);
+      }
 
-    m_data -> uid_table = calloc (sizeof (word36), m_data -> vtoc_no);
+    m_data -> uid_table = calloc (sizeof (word36), m_data -> total_vtoc_no);
     if (m_data -> uid_table == NULL)
       {
         perror ("uid_table alloc");
         abort ();
       }
     
-    m_data -> name_table = calloc (sizeof (char *),  m_data -> vtoc_no);
+    m_data -> name_table = calloc (sizeof (char *), m_data -> total_vtoc_no);
     if (m_data -> name_table == NULL)
       {
         perror ("name_table alloc");
         abort ();
       }
     
-    m_data -> fq_name_table = calloc (sizeof (char *),  m_data -> vtoc_no);
+    m_data -> fq_name_table = calloc (sizeof (char *), m_data -> total_vtoc_no);
     if (m_data -> fq_name_table == NULL)
       {
         perror ("fq_name_table alloc");
         abort ();
       }
     
-    m_data -> attr_table = calloc (sizeof (word36),  m_data -> vtoc_no);
+    m_data -> attr_table = calloc (sizeof (word36), m_data -> total_vtoc_no);
     if (m_data -> attr_table == NULL)
       {
         perror ("attr_table alloc");
+        abort ();
+      }
+
+    m_data -> sv_table = calloc (sizeof (int), m_data -> total_vtoc_no);
+    if (m_data -> sv_table == NULL)
+      {
+        perror ("sv_table alloc");
+        abort ();
+      }
+
+    m_data -> vtoce_table = calloc (sizeof (int), m_data -> total_vtoc_no);
+    if (m_data -> vtoce_table == NULL)
+      {
+        perror ("vtoce_table alloc");
         abort ();
       }
 
@@ -817,78 +845,84 @@ int mx_mount (struct m_state * m_data)
 
 // Build uid, attr  and name table
 
-    //word36 free = 0;
-    //word36 found = 0;
-    for (int i = 0; i < m_data -> vtoc_no; i ++)
+    m_data -> vtoc_cnt = 0;
+    for (int sv = 0; sv < 3; sv ++)
       {
-        VTOCE vtoce;
-        readVTOCE (fd, i, & vtoce);
-        word36 uid = vtoce [1];
-        m_data -> uid_table [i] = uid;
-        m_data -> attr_table [i] = vtoce [5];
-        if (! uid)
+        for (int i = 0; i < m_data -> vtoc_no [sv]; i ++)
           {
-            m_data -> name_table [i] = NULL;
-            //free ++;
-            continue;
-          }
-
-        if (uid == 0777777777777lu) // root
-          {
-            m_data -> name_table [i] = strdup (">");
-            //free ++;
-            continue;
-          }
-
-        word36 path_uid = vtoce [160];
-        if (path_uid != 0777777777777lu)
-          {
-            m_data -> uid_table [i] = 0;
-            m_data -> name_table [i] = NULL;
-            //free ++;
-            continue;
-          }
-
+            VTOCE vtoce;
+            readVTOCE (fd, i, sv, & vtoce);
+            word36 uid = vtoce [1];
+            if (! uid)
+              continue;
+            m_data -> uid_table [m_data -> vtoc_cnt] = uid;
+            m_data -> attr_table [m_data -> vtoc_cnt] = vtoce [5];
+            m_data -> sv_table [m_data -> vtoc_cnt] = sv;
+            m_data -> vtoce_table [m_data -> vtoc_cnt] = i;
+            if (uid == 0777777777777lu) // root
+              {
+                m_data -> name_table [m_data -> vtoc_cnt] = strdup (">");
+              }
+            else
+              {
+#if 0
+                word36 path_uid = vtoce [160];
+                if (path_uid != 0777777777777lu)
+                  {
+                    m_data -> uid_table [sv] [m_data -> vtoc_cnt] = 0;
+                    m_data -> name_table [sv] [m_data -> vtoc_cnt] = NULL;
+                    //free ++;
+                    continue;
+                  }
+#endif
 //fprintf (stderr, "04u %012lo\n", i, uid);
-        char name [33 + 100];
-        name [0] = 0;
-        for (int j = 0; j < 8; j ++)
-           strcat (name, str (vtoce [vtoce_primary_name_os + j]));
-        for (int j = strlen (name) - 1; j >= 0; j --)
-           if (name [j] == ' ')
-             name [j] = 0;
-           else
-             break;
-        m_data -> name_table [i] = strdup (name);
-        //found ++;
+                char name [33 + 100];
+                name [0] = 0;
+                for (int j = 0; j < 8; j ++)
+                   strcat (name, str (vtoce [vtoce_primary_name_os + j]));
+                for (int j = strlen (name) - 1; j >= 0; j --)
+                   if (name [j] == ' ')
+                     name [j] = 0;
+                   else
+                     break;
+                m_data -> name_table [m_data -> vtoc_cnt] = strdup (name);
+              }
+            m_data -> vtoc_cnt ++;
+          }
       }
+
 
 // Build fq_name table
 
-    for (int i = 0; i < m_data -> vtoc_no; i ++)
+    for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
-        if (! m_data -> uid_table [i])
-          continue;
         char fq_name [4096];
         fq_name [0] = 0;
 
         VTOCE vtoce;
-        readVTOCE (fd, i, & vtoce);
+        readVTOCE (fd, m_data -> vtoce_table [i], m_data -> sv_table [i], & vtoce);
         for (int j = 0; j < 16; j ++)
           {
             word36 path_uid = vtoce [160 + j];
             if (! path_uid)
               break;
-            for (int k = 0; k < m_data -> vtoc_no; k ++)
+            int k;
+            for (k = 0; k < m_data -> vtoc_cnt; k ++)
               {
                 if (m_data -> uid_table [k] == path_uid)
                   {
                     strcat (fq_name, m_data -> name_table [k]);
-                    if (j)
-                      strcat (fq_name, ">");
                     break;
                   }
               }
+            if (k >= m_data -> vtoc_cnt)
+              {
+                 char buf [13];
+                 sprintf (buf, "%012lo", path_uid);
+                 strcat (fq_name, buf);
+              }
+            if (j)
+              strcat (fq_name, ">");
           }
 
         char name [33];
@@ -902,19 +936,18 @@ int mx_mount (struct m_state * m_data)
             break;
         strcat (fq_name, name);
         m_data -> fq_name_table [i] = strdup (fq_name);
-        //printf ("%4d  (%s)\n", i, m_data -> fq_name_table [i]);
+        //printf ("%d %05o %4d %012lo (%s)\n", m_data -> sv_table [i], m_data -> vtoce_table [i], i, m_data -> uid_table [i], m_data -> fq_name_table [i]);
         //log_msg ("%4d  ", i);
         //log_msg (" (%s)\n", fq_name);
       }
-
     return 0;
   }
 
 int find_uid (word36 uid)
   {
-    int vtoc_no = M_DATA -> vtoc_no;
+    int vtoc_cnt = M_DATA -> vtoc_cnt;
     word36 * utab = M_DATA -> uid_table;
-    for (int i = 0; i < vtoc_no; i ++)
+    for (int i = 0; i < vtoc_cnt; i ++)
       if (utab [i] == uid)
         return i;
     return -1;
@@ -984,7 +1017,7 @@ int mx_lookup_path (const char * path)
       }
     char * s = strdup (path);
     fixit (s);
-    for (int i = 0; i < m_data -> vtoc_no; i ++)
+    for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
         if (! m_data -> uid_table [i])
           continue;
@@ -1008,7 +1041,7 @@ int mx_readdir (off_t offset, const char * path)
         sl ++;
       }
 //printf ("mx_readdir fixit [%s]\n", s);
-    for (int i = offset; i < m_data -> vtoc_no; i ++)
+    for (int i = offset; i < m_data -> vtoc_cnt; i ++)
       {
         if (! m_data -> uid_table [i])
           continue;
