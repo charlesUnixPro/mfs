@@ -848,7 +848,7 @@ int mx_mount (struct m_state * m_data)
       }
 
 
-// Build fq_name table
+// Build dir_name & fq_name table
 
     for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
@@ -881,6 +881,8 @@ int mx_mount (struct m_state * m_data)
               strcat (fq_name, ">");
           }
 
+        m_data -> vtoc [i] . dir_name = strdup (fq_name);
+
         char name [33];
         name [0] = 0;
         for (int j = 0; j < 8; j ++)
@@ -892,6 +894,7 @@ int mx_mount (struct m_state * m_data)
             break;
         strcat (fq_name, name);
         m_data -> vtoc [i] . fq_name = strdup (fq_name);
+
         //printf ("%d %05o %4d %012lo (%s)\n", m_data -> vtoc [i] . sv, m_data -> vtoc [i] . vtoce, i, m_data -> vtoc [i] . uid, m_data -> vtoc [i] . fq_name);
         //log_msg ("%4d  ", i);
         //log_msg (" (%s)\n", fq_name);
@@ -1000,6 +1003,7 @@ int mx_readdir (off_t offset, const char * path)
 //printf ("mx_readdir fixit [%s]\n", s);
     for (int i = offset; i < m_data -> vtoc_cnt; i ++)
       {
+#if 0
         char * fq = m_data -> vtoc [i] . fq_name;
         size_t fql = strlen (fq);
 
@@ -1020,6 +1024,12 @@ int mx_readdir (off_t offset, const char * path)
 //printf ("mx_readdir %ld %s %s\n", sl, s, fq);
             return i;
           }
+#else
+        if (strcmp (s, m_data -> vtoc [i] . dir_name) == 0)
+          {
+            return i;
+          }
+#endif
       }
     return -1;
   }

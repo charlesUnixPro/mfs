@@ -3,7 +3,6 @@
   #including all the headers.
 */
 
-
 // The FUSE API has been changed a number of times.  So, our code
 // needs to define the version of the API that we assume.  As of this
 // writing, the most current API version is 26
@@ -31,6 +30,7 @@ struct m_state
       {
         word36 uid;   
         char * name;
+        char * dir_name;
         char * fq_name;
         word36 attr;
         time_t dtu;
