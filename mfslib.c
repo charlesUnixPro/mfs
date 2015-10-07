@@ -841,6 +841,27 @@ int mx_mount (struct m_state * m_data)
         abort ();
       }
 
+    m_data -> dtu_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
+    if (m_data -> dtu_table == NULL)
+      {
+        perror ("dtu_table alloc");
+        abort ();
+      }
+
+    m_data -> dtm_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
+    if (m_data -> dtm_table == NULL)
+      {
+        perror ("dtm_table alloc");
+        abort ();
+      }
+
+    m_data -> time_created_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
+    if (m_data -> time_created_table == NULL)
+      {
+        perror ("time_created_table alloc");
+        abort ();
+      }
+
 
 
 // Build uid, attr  and name table
@@ -857,6 +878,9 @@ int mx_mount (struct m_state * m_data)
               continue;
             m_data -> uid_table [m_data -> vtoc_cnt] = uid;
             m_data -> attr_table [m_data -> vtoc_cnt] = vtoce [5];
+            m_data -> dtu_table [m_data -> vtoc_cnt] = vtoce [3];
+            m_data -> dtm_table [m_data -> vtoc_cnt] = vtoce [4];
+            m_data -> time_created_table [m_data -> vtoc_cnt] = vtoce [184];
             m_data -> sv_table [m_data -> vtoc_cnt] = sv;
             m_data -> vtoce_table [m_data -> vtoc_cnt] = i;
             if (uid == 0777777777777lu) // root

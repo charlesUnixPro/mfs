@@ -86,6 +86,20 @@ static void m_fullpath (char fpath [PATH_MAX], const char * path)
   }
 #endif
 
+static time_t m2uTime (word36 mtime)
+  {
+     // Convert from fscom format to uSecs since 1901-01-01
+     word72 lmtime = ((word72) mtime) << 16;
+    // Convert to seconds since 1901-01-01
+    lmtime /= 1000000lu;
+    // Convert Multics uSecs since 1901-01-01 to UNIX uSecs since 1970-01-01
+    lmtime -= 2177452800lu;
+    // Add the 22 year Y@K Fudge
+    lmtime += (1438644783lu - 744420783lu);
+    time_t utime = (time_t) lmtime;
+    return utime;
+  }
+
 
 static int m_readdir (const char * path, void * buf, 
                       fuse_fill_dir_t filler,
@@ -96,11 +110,14 @@ next:;
 //printf ("m_readdir path %s offset %ld\n", path, offset);
     int ind = mx_readdir (offset, path);
     if (ind < 0)
-      goto done;
+      return 0;
 //printf ("readdir ind %d %s\n", ind, m_data -> fq_name_table [ind]);
     struct stat st;
     memset (& st, 0, sizeof (st));
     st . st_mode = 0444;
+    st . st_mtime = m2uTime (m_data -> dtm_table [ind]);
+    st . st_atime = m2uTime (m_data -> dtu_table [ind]);
+    st . st_ctime = m2uTime (m_data -> time_created_table [ind]);
     int f = filler (buf, m_data -> name_table [ind], & st, ind + 1);
 //printf ("filler returned %d\n", f);
     if (f == 0)
@@ -108,8 +125,6 @@ next:;
         offset = ind + 1;
         goto next;
       }
-    return 0;
-done:;
     return 0;
   }
 
@@ -124,6 +139,9 @@ static int m_getattr (const char * path, struct stat * statbuf)
 
     int res = 0;
     memset (statbuf, 0, sizeof (struct stat));
+    statbuf ->  st_mtime = m2uTime (M_DATA -> dtm_table [ind]);
+    statbuf ->  st_atime = m2uTime (M_DATA -> dtu_table [ind]);
+    statbuf ->  st_ctime = m2uTime (M_DATA -> time_created_table [ind]);
     if (strcmp (path, "/") == 0)
       {
         statbuf -> st_mode = S_IFDIR | 0555;

@@ -33,6 +33,10 @@ struct m_state
     word36 * attr_table;
     int * sv_table;
     int * vtoce_table;
+    time_t * dtu_table;
+    time_t * dtm_table;
+    time_t * time_created_table;
+
     int vtoc_no [3];
     int total_vtoc_no;
     int vtoc_cnt;
