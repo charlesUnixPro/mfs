@@ -1032,9 +1032,10 @@ int mx_lookup_path (const char * path)
 int mx_readdir (off_t offset, const char * path)
   {
     struct m_state * m_data = M_DATA;
-    char * s = strdup (path);
+    size_t sl = strlen (path);
+    char s [sl + 2];
+    strcpy (s, path);
     fixit (s);
-    size_t sl = strlen (s);
     if (s [sl -1] != '>')
       {
         strcat (s, ">");
@@ -1043,9 +1044,6 @@ int mx_readdir (off_t offset, const char * path)
 //printf ("mx_readdir fixit [%s]\n", s);
     for (int i = offset; i < m_data -> vtoc_cnt; i ++)
       {
-        if (! m_data -> uid_table [i])
-          continue;
-
         char * fq = m_data -> fq_name_table [i];
         size_t fql = strlen (fq);
 
@@ -1053,7 +1051,7 @@ int mx_readdir (off_t offset, const char * path)
         char * last = strrchr (fq, '>');
         if (! last)
           {
-            printf ("not last? %s\n", fq);
+            printf ("not last? %d %s\n", i, fq);
             continue;
           }
         size_t dir_len = last - fq + 1;
