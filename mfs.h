@@ -27,15 +27,18 @@ struct m_state
   {
     FILE * logfile;
     char * dsknam;
-    word36 * uid_table;   
-    char * * name_table;
-    char * * fq_name_table;
-    word36 * attr_table;
-    int * sv_table;
-    int * vtoce_table;
-    time_t * dtu_table;
-    time_t * dtm_table;
-    time_t * time_created_table;
+    struct vtoc
+      {
+        word36 uid;   
+        char * name;
+        char * fq_name;
+        word36 attr;
+        time_t dtu;
+        time_t dtm;
+        time_t time_created;
+        int sv;
+        int vtoce;
+      } * vtoc;
 
     int vtoc_no [3];
     int total_vtoc_no;

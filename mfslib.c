@@ -753,11 +753,11 @@ int mx_mount (struct m_state * m_data)
 #if 0
 // What is the root VTOC index?
 
-    word36 root_votc = extr36 (r0, label_root_os + 0);
-    if (root_votc & 0400000000000lu)
+    word36 root_vtoc = extr36 (r0, label_root_os + 0);
+    if (root_vtoc & 0400000000000lu)
       {
-        root_votc &= 0377777777777lu;
-        fprintf (stderr, "Root is on this pack; VOTC index of %012lo (%lu)\n", root_votc, root_votc);
+        root_vtoc &= 0377777777777lu;
+        fprintf (stderr, "Root is on this pack; VOTC index of %012lo (%lu)\n", root_vtoc, root_vtoc);
       }
 #endif
 
@@ -799,70 +799,12 @@ int mx_mount (struct m_state * m_data)
         //fprintf (stderr, "vtoc_no %lu\n", vtoc_no);
       }
 
-    m_data -> uid_table = calloc (sizeof (word36), m_data -> total_vtoc_no);
-    if (m_data -> uid_table == NULL)
+    m_data -> vtoc = calloc (sizeof (struct vtoc), m_data -> total_vtoc_no);
+    if (m_data -> vtoc == NULL)
       {
-        perror ("uid_table alloc");
+        perror ("vtoc alloc");
         abort ();
       }
-    
-    m_data -> name_table = calloc (sizeof (char *), m_data -> total_vtoc_no);
-    if (m_data -> name_table == NULL)
-      {
-        perror ("name_table alloc");
-        abort ();
-      }
-    
-    m_data -> fq_name_table = calloc (sizeof (char *), m_data -> total_vtoc_no);
-    if (m_data -> fq_name_table == NULL)
-      {
-        perror ("fq_name_table alloc");
-        abort ();
-      }
-    
-    m_data -> attr_table = calloc (sizeof (word36), m_data -> total_vtoc_no);
-    if (m_data -> attr_table == NULL)
-      {
-        perror ("attr_table alloc");
-        abort ();
-      }
-
-    m_data -> sv_table = calloc (sizeof (int), m_data -> total_vtoc_no);
-    if (m_data -> sv_table == NULL)
-      {
-        perror ("sv_table alloc");
-        abort ();
-      }
-
-    m_data -> vtoce_table = calloc (sizeof (int), m_data -> total_vtoc_no);
-    if (m_data -> vtoce_table == NULL)
-      {
-        perror ("vtoce_table alloc");
-        abort ();
-      }
-
-    m_data -> dtu_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
-    if (m_data -> dtu_table == NULL)
-      {
-        perror ("dtu_table alloc");
-        abort ();
-      }
-
-    m_data -> dtm_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
-    if (m_data -> dtm_table == NULL)
-      {
-        perror ("dtm_table alloc");
-        abort ();
-      }
-
-    m_data -> time_created_table = calloc (sizeof (time_t), m_data -> total_vtoc_no);
-    if (m_data -> time_created_table == NULL)
-      {
-        perror ("time_created_table alloc");
-        abort ();
-      }
-
-
 
 // Build uid, attr  and name table
 
@@ -876,29 +818,19 @@ int mx_mount (struct m_state * m_data)
             word36 uid = vtoce [1];
             if (! uid)
               continue;
-            m_data -> uid_table [m_data -> vtoc_cnt] = uid;
-            m_data -> attr_table [m_data -> vtoc_cnt] = vtoce [5];
-            m_data -> dtu_table [m_data -> vtoc_cnt] = vtoce [3];
-            m_data -> dtm_table [m_data -> vtoc_cnt] = vtoce [4];
-            m_data -> time_created_table [m_data -> vtoc_cnt] = vtoce [184];
-            m_data -> sv_table [m_data -> vtoc_cnt] = sv;
-            m_data -> vtoce_table [m_data -> vtoc_cnt] = i;
+            m_data -> vtoc [m_data -> vtoc_cnt] . uid = uid;
+            m_data -> vtoc [m_data -> vtoc_cnt] . attr = vtoce [5];
+            m_data -> vtoc [m_data -> vtoc_cnt] . dtu = vtoce [3];
+            m_data -> vtoc [m_data -> vtoc_cnt] . dtm = vtoce [4];
+            m_data -> vtoc [m_data -> vtoc_cnt] . time_created = vtoce [184];
+            m_data -> vtoc [m_data -> vtoc_cnt] . sv = sv;
+            m_data -> vtoc [m_data -> vtoc_cnt] . vtoce= i;
             if (uid == 0777777777777lu) // root
               {
-                m_data -> name_table [m_data -> vtoc_cnt] = strdup (">");
+                m_data -> vtoc [m_data -> vtoc_cnt] . name = strdup (">");
               }
             else
               {
-#if 0
-                word36 path_uid = vtoce [160];
-                if (path_uid != 0777777777777lu)
-                  {
-                    m_data -> uid_table [sv] [m_data -> vtoc_cnt] = 0;
-                    m_data -> name_table [sv] [m_data -> vtoc_cnt] = NULL;
-                    //free ++;
-                    continue;
-                  }
-#endif
 //fprintf (stderr, "04u %012lo\n", i, uid);
                 char name [33 + 100];
                 name [0] = 0;
@@ -909,7 +841,7 @@ int mx_mount (struct m_state * m_data)
                      name [j] = 0;
                    else
                      break;
-                m_data -> name_table [m_data -> vtoc_cnt] = strdup (name);
+                m_data -> vtoc [m_data -> vtoc_cnt] .name = strdup (name);
               }
             m_data -> vtoc_cnt ++;
           }
@@ -924,7 +856,7 @@ int mx_mount (struct m_state * m_data)
         fq_name [0] = 0;
 
         VTOCE vtoce;
-        readVTOCE (fd, m_data -> vtoce_table [i], m_data -> sv_table [i], & vtoce);
+        readVTOCE (fd, m_data -> vtoc [i] . vtoce, m_data -> vtoc [i] . sv, & vtoce);
         for (int j = 0; j < 16; j ++)
           {
             word36 path_uid = vtoce [160 + j];
@@ -933,9 +865,9 @@ int mx_mount (struct m_state * m_data)
             int k;
             for (k = 0; k < m_data -> vtoc_cnt; k ++)
               {
-                if (m_data -> uid_table [k] == path_uid)
+                if (m_data -> vtoc [k] . uid == path_uid)
                   {
-                    strcat (fq_name, m_data -> name_table [k]);
+                    strcat (fq_name, m_data -> vtoc [k] . name);
                     break;
                   }
               }
@@ -959,8 +891,8 @@ int mx_mount (struct m_state * m_data)
           else
             break;
         strcat (fq_name, name);
-        m_data -> fq_name_table [i] = strdup (fq_name);
-        //printf ("%d %05o %4d %012lo (%s)\n", m_data -> sv_table [i], m_data -> vtoce_table [i], i, m_data -> uid_table [i], m_data -> fq_name_table [i]);
+        m_data -> vtoc [i] . fq_name = strdup (fq_name);
+        //printf ("%d %05o %4d %012lo (%s)\n", m_data -> vtoc [i] . sv, m_data -> vtoc [i] . vtoce, i, m_data -> vtoc [i] . uid, m_data -> vtoc [i] . fq_name);
         //log_msg ("%4d  ", i);
         //log_msg (" (%s)\n", fq_name);
       }
@@ -970,9 +902,9 @@ int mx_mount (struct m_state * m_data)
 int find_uid (word36 uid)
   {
     int vtoc_cnt = M_DATA -> vtoc_cnt;
-    word36 * utab = M_DATA -> uid_table;
+    struct vtoc * vtoc = M_DATA -> vtoc;
     for (int i = 0; i < vtoc_cnt; i ++)
-      if (utab [i] == uid)
+      if (vtoc [i] . uid == uid)
         return i;
     return -1;
   }
@@ -1043,10 +975,10 @@ int mx_lookup_path (const char * path)
     fixit (s);
     for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
-        if (! m_data -> uid_table [i])
+        if (! m_data -> vtoc [i] . uid)
           continue;
-//log_msg ("%s %s\n", s, m_data -> fq_name_table [i]);
-        if (strcmp (s, m_data -> fq_name_table [i]) == 0)
+//log_msg ("%s %s\n", s, m_data -> vtoc [i] . fq_name);
+        if (strcmp (s, m_data -> vtoc [i] . fq_name) == 0)
           return i;
       }
     return -1;
@@ -1068,7 +1000,7 @@ int mx_readdir (off_t offset, const char * path)
 //printf ("mx_readdir fixit [%s]\n", s);
     for (int i = offset; i < m_data -> vtoc_cnt; i ++)
       {
-        char * fq = m_data -> fq_name_table [i];
+        char * fq = m_data -> vtoc [i] . fq_name;
         size_t fql = strlen (fq);
 
         // Find the rightmost > in fq_name
