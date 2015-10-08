@@ -536,17 +536,17 @@
 //      1     3 proj_rp bit (18),                                   /* project of user who set the bit count */
 //      
 //  32  .     3 tag char (1),                                       /* tag of user who set the bit count */
-//      1     3 pad5 bit (2),
-//  33  1   2 bc fixed bin (24)) unaligned,                         /* bit count for segs, msf indicator for dirs */
+//      .     3 pad5 bit (2),
+//      1   2 bc fixed bin (24)) unaligned,                         /* bit count for segs, msf indicator for dirs */
 //      
-//  34  1   2 sons_lvid bit (36),                                   /* logical volume id for immediat inf non dir seg */
+//  33  1   2 sons_lvid bit (36),                                   /* logical volume id for immediat inf non dir seg */
 //      
-//  35  1   2 pad6 bit (36),
+//  34  1   2 pad6 bit (36),
 //      
-//  36  1   2 checksum bit (36),                                    /* checksum from dtd */
+//  35  1   2 checksum bit (36),                                    /* checksum from dtd */
 //      
-//  37  1   2 owner bit (36);                                       /* uid of containing directory */
-//  38  
+//  36  1   2 owner bit (36);                                       /* uid of containing directory */
+//  37 -- one short
 
 
 
@@ -847,6 +847,7 @@ static void readRecord (int fd, int rec, int sv, record * data)
   }
 
 #define MASK36 0777777777777
+#define MASK24 0000077777777
 #define MASK18 0000000777777
 
 static word36 vtoc_origin = 8;
@@ -992,9 +993,12 @@ static void processDirectory (struct m_state * m_data, int ind)
         vtocp -> entries [entry_cnt] . name = strdup (name);
         vtocp -> entries [entry_cnt] . uid = uid;
         vtocp -> entries [entry_cnt] . type = type;
+        word36 bc = readFileDataWord (m_data, ind, entryp + 32);
+        vtocp -> entries [entry_cnt] . bitcnt = bc & MASK24;
+//printf ("   %s %u\n", name, vtocp -> entries [entry_cnt] . bitcnt);
         entry_cnt ++;
 next:;
-        entryp = efrp; 
+        entryp = efrp;
       }
 if (entry_cnt != vtocp -> ent_cnt)
   printf ("entry_cnt %d ent_cnt %d\n", entry_cnt, vtocp -> ent_cnt);
@@ -1158,7 +1162,6 @@ int mx_mount (struct m_state * m_data)
               }
             else
               {
-//fprintf (stderr, "04u %012lo\n", i, uid);
                 char name [33 + 100];
                 name [0] = 0;
                 for (int j = 0; j < 8; j ++)
@@ -1226,78 +1229,12 @@ int mx_mount (struct m_state * m_data)
         m_data -> vtoc [i] . fq_name = strdup (fq_name);
 
         //printf ("%d %05o %4d %012lo (%s)\n", m_data -> vtoc [i] . sv, m_data -> vtoc [i] . vtoce, i, m_data -> vtoc [i] . uid, m_data -> vtoc [i] . fq_name);
-        //log_msg ("%4d  ", i);
-        //log_msg (" (%s)\n", fq_name);
       }
-
-#if 0
-    int ind;
-    for (ind = 0; ind < m_data -> vtoc_cnt; ind ++)
-      if (m_data -> vtoc [ind] . attr & 0400000)
-        break;
-#endif
-    //int ind = 0; // '>'
-    //processDirectory (m_data, ind);
-//abort();
     return 0;
   }
 
-#if 0
-int find_uid (word36 uid)
-  {
-    int vtoc_cnt = M_DATA -> vtoc_cnt;
-    struct vtoc * vtoc = M_DATA -> vtoc;
-    for (int i = 0; i < vtoc_cnt; i ++)
-      if (vtoc [i] . uid == uid)
-        return i;
-    return -1;
-  }
-#endif
 
-#if 0
-int find_entry (char * name, word36 * upath, int npath)
-  {
-    for (uint i = 0; i < vtoc_no; i ++)
-      {
-        VTOCE vtoce;
-        readVTOCE (m_data -> fd, i, & vtoce);
-        word36 uid = vtoce [1];
-        if (uid)
-          {
-            int cnt;
-            for (cnt = 0; cnt < 16; cnt ++)
-              {
-                word36 path_uid = vtoce [160 + cnt];
-                if (! path_uid)
-                  break;
-              }
-            if (cnt != npath) // different path lengths
-              goto next;
-            for (int j = 0; j < npath; j ++)
-              {
-                word36 path_uid = vtoce [160 + cnt];
-                if (path_uid != upath [npath])
-                  goto next;
-              }
-            char ent_name [33];
-            ent_name [0] = 0;
-            for (int j = 0; j < 8; j ++)
-               strcat (ent_name, str (vtoce [vtoce_primary_name_os + j]));
-            for (int j = strlen (ent_name) - 1; j >= 0; j --)
-               if (name [j] == ' ')
-                 name [j] = 0;
-               else
-                 break;
-            if (strcmp (ent_name, name) == 0)
-              return i;
-          }
-next: ;
-      }
-
-  }
-#endif
-
-void fixit (char * s)
+static void fixit (char * s)
   {
     size_t l = strlen (s);
     for (size_t i = 0; i < l; i ++)

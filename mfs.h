@@ -18,6 +18,7 @@
 
 typedef uint16_t word9;
 typedef uint32_t word18;
+typedef uint32_t word24;
 typedef uint64_t word36;
 typedef unsigned int uint;
 typedef __uint128_t word72;
@@ -26,6 +27,7 @@ struct entry
   {
     char * name;
     word36 uid;
+    word24 bitcnt;
 // 4 directory
 // 5 link
 // 7 segment

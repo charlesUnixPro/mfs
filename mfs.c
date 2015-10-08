@@ -114,6 +114,8 @@ static int m_readdir (const char * path, void * buf,
                       fuse_fill_dir_t filler,
                       off_t offset, struct fuse_file_info * fi)
   {
+    struct stat st;
+    memset (& st, 0, sizeof (st));
     int ind = mx_lookup_path (path);
     if (ind < 0)
       {
@@ -128,43 +130,156 @@ next:;
 
     if (offset >= vtocp -> ent_cnt)
       return 0;
-    int pri_ind = find_uid (m_data, entryp [offset] . uid);
-    if (pri_ind < 0)
+
+    if (entryp [offset] . type == 7 || // segment
+        entryp [offset] . type == 4) // directory
       {
-        printf ("find_uid failed; uid %012lo %s\n", entryp [offset] . uid, entryp [offset] . name);
-        return -1;
+        int pri_ind = find_uid (m_data, entryp [offset] . uid);
+        if (pri_ind < 0)
+          {
+            printf ("find_uid failed; uid %012lo %s\n", entryp [offset] . uid, entryp [offset] . name);
+            printf ("  path %s\n", path);
+            printf ("  ind %d\n", ind);
+            printf ("  offset %ld\n", offset);
+            printf ("  ent_cnt %d\n", vtocp -> ent_cnt);
+            printf ("  type %d\n", entryp [offset] . type);
+
+            return -1;
+          }
+        st . st_mode = 0444;
+        st . st_mtime = m2uTime (m_data -> vtoc [pri_ind] . dtm);
+        st . st_atime = m2uTime (m_data -> vtoc [pri_ind] . dtu);
+        st . st_ctime = m2uTime (m_data -> vtoc [pri_ind] . time_created);
+        int f;
+        if (strcmp (">", entryp [offset] . name) == 0)
+            f = filler (buf, "/", & st, offset + 1);
+        else
+            f = filler (buf, entryp [offset] . name, & st, offset + 1);
+        if (f == 0)
+          {
+            offset ++;
+            goto next;
+          }
       }
-    struct stat st;
-    memset (& st, 0, sizeof (st));
-    st . st_mode = 0444;
-    st . st_mtime = m2uTime (m_data -> vtoc [pri_ind] . dtm);
-    st . st_atime = m2uTime (m_data -> vtoc [pri_ind] . dtu);
-    st . st_ctime = m2uTime (m_data -> vtoc [pri_ind] . time_created);
-    int f;
-    if (strcmp (">", entryp [offset] . name) == 0)
-        f = filler (buf, "/", & st, offset + 1);
-    else
-        f = filler (buf, entryp [offset] . name, & st, offset + 1);
-    if (f == 0)
+    else if (entryp [offset] . type == 5) // link
       {
-        offset ++;
-        goto next;
+        st . st_mode = 0444;
+        st . st_mtime = m2uTime (m_data -> vtoc [ind] . dtm);
+        st . st_atime = m2uTime (m_data -> vtoc [ind] . dtu);
+        st . st_ctime = m2uTime (m_data -> vtoc [ind] . time_created);
+        int f;
+        if (strcmp (">", entryp [offset] . name) == 0)
+            f = filler (buf, "/", & st, offset + 1);
+        else
+            f = filler (buf, entryp [offset] . name, & st, offset + 1);
+        if (f == 0)
+          {
+            offset ++;
+            goto next;
+          }
       }
+
     return 0;
   }
 
 static int m_getattr (const char * path, struct stat * statbuf)
   {
+    memset (statbuf, 0, sizeof (struct stat));
+// find the directory path
+    char s [strlen (path) + 1];
+    strcpy (s, path);
+    char * last = strrchr (s, '/');
+    if (! last)
+      {
+        printf ("m_getattr no path in %s\n", path);
+        return -ENOENT;
+      }
+    if (s == last) // only root
+      strcpy (s, "/");
+    else
+      * last = 0;
+    int dind = mx_lookup_path (s);
+    if (dind < 0)
+      {
+        printf ("m_getattr can't find [%s] [%s]\n", s, path);
+        return -ENOENT;
+      }
+    if (! (M_DATA -> vtoc [dind] . attr & 0400000))
+      {
+        printf ("m_getattr dir not dir? [%s]\n", path);
+        return -ENOENT;
+      }
+
+
     int ind = mx_lookup_path (path);
     if (ind < 0)
       return -ENOENT;
+    char * basename = strrchr (path, '/');
+    if (! basename)
+      {
+        printf ("m_getattr no basename in %s\n", path);
+        return -ENOENT;
+      }
+    basename ++;
+    if (strlen (basename) == 0)
+      { // ? getattr of a directory
+        if (! (M_DATA -> vtoc [ind] . attr & 0400000))
+          {
+            printf ("getattr dir not dir? %s\n", path);
+            return -ENOENT;
+          }
+        statbuf ->  st_mtime = m2uTime (M_DATA -> vtoc [ind] . dtm);
+        statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [ind] . dtu);
+        statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [ind] . time_created);
+        statbuf -> st_mode = S_IFDIR | 0555;
+        statbuf -> st_nlink = 1;
+        statbuf -> st_size = 0;
+        return 0;
+      }
 //log_msg ("getattr lookup of %s found %s\n", path, M_DATA -> vtoc [ind] . fq_name);
 
-    int res = 0;
-    memset (statbuf, 0, sizeof (struct stat));
-    statbuf ->  st_mtime = m2uTime (M_DATA -> vtoc [ind] . dtm);
-    statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [ind] . dtu);
-    statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [ind] . time_created);
+// find basename in entries
+
+    struct entry * entryp = M_DATA -> vtoc [dind] . entries;
+    int ent_cnt = M_DATA -> vtoc [dind] . ent_cnt;
+    int eind;
+    for (eind = 0; eind < ent_cnt; eind ++)
+      if (strcmp (basename, entryp [eind] . name) == 0)
+        break;
+    if (eind >= ent_cnt)
+      {
+        printf ("getattr can't find %s in entries\n", basename);
+        return -ENOENT;
+      }
+     
+    if (entryp [eind] . type == 5) // link
+      {
+        // XXX link times?
+        statbuf ->  st_mtime = 0;
+        statbuf ->  st_atime = 0;
+        statbuf ->  st_ctime = 0;
+        statbuf -> st_mode = S_IFLNK | 0444;
+        statbuf -> st_nlink = 1;
+        statbuf -> st_size = 0;
+        return 0;
+      }
+
+    int pri_ind = find_uid (M_DATA, entryp [eind] . uid);
+    if (pri_ind < 0)
+      {
+        printf ("find_uid failed; uid %012lo %s\n", entryp [eind] . uid, entryp [eind] . name);
+        printf ("  path %s\n", path);
+        printf ("  ind %d\n", ind);
+        printf ("  eind %d\n", eind);
+        //printf ("  ent_cnt %d\n", vtocp -> ent_cnt);
+        printf ("  type %d\n", entryp [eind] . type);
+
+        return -1;
+      }
+    statbuf ->  st_mode = 0444;
+    statbuf ->  st_mtime = m2uTime (M_DATA -> vtoc [pri_ind] . dtm);
+    statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [pri_ind] . dtu);
+    statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [pri_ind] . time_created);
     if (strcmp (path, "/") == 0)
       {
         statbuf -> st_mode = S_IFDIR | 0555;
@@ -172,7 +287,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
       }
     else
       {
-        if (M_DATA -> vtoc [ind] . attr & 0400000)
+        if (M_DATA -> vtoc [pri_ind] . attr & 0400000)
           {
             statbuf -> st_mode = S_IFDIR | 0555;
             statbuf -> st_nlink = 1;
@@ -182,20 +297,10 @@ static int m_getattr (const char * path, struct stat * statbuf)
           {
             statbuf -> st_mode = S_IFREG | 0444;
             statbuf -> st_nlink = 1;
-            statbuf -> st_size = 0;
+            statbuf -> st_size = (entryp [eind] . bitcnt + 7) / 8;
           }
       }
-#if 0
-    else if (strcmp(path, "test") == 0)
-      {
-        statbuf -> st_mode = S_IFREG | 0444;
-        statbuf -> st_nlink = 1;
-        statbuf -> st_size = strlen ("test test");
-      }
-    else
-      res = -ENOENT;
-#endif
-    return res;
+    return 0;
 
 #if 0
 // ignored https://sourceforge.net/p/fuse/wiki/Getattr%28%29/
