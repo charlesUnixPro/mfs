@@ -32,6 +32,7 @@ struct entry
 // 5 link
 // 7 segment
     int type;
+    char * link_target;
   };
 
 struct m_state

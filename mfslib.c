@@ -550,6 +550,20 @@
 
 
 
+
+
+//      /* the declarations below are only applicable to links */
+//      
+// 24  .    2 pad3 bit (18),
+//     1    2 pathname_size fixed bin (17),                         /* number of characters in pathname */
+//      
+// 25 42    2 pathname char (168 refer (pathname_size))) unaligned, /* pathname of link */
+//      
+// 67  1    2 checksum bit (36),                                    /* checksum from uid */
+//      
+// 68  1    2 owner bit (36);                                       /* uid of containing directory */
+//      
+
 // .dsk files 
 // data is in packed 72 format
 // word72 <=> uchar [9]
@@ -833,9 +847,7 @@ static void readRecord (int fd, int rec, int sv, record * data)
       }
 
     int sect = r2s (rec, sv);
-//fprintf (stderr, "rr rec %d sect %d\n", rec, sect);
     off_t n = lseek (fd, sect * SECTOR_SZ_IN_BYTES, SEEK_SET);
-//fprintf (stderr, "rr rec %d sect %d offset %d %o\n", rec, sect, sect * 512, sect * 512);
     if (n == (off_t) -1)
       { fprintf (stderr, "2\n"); exit (1); }
     ssize_t r = read (fd, & cache . data, sizeof (record));
@@ -870,7 +882,6 @@ static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
 static void readFileDataRecord (struct m_state * m_data, int ind, uint frecno, record * data)
   {
     uint recno = m_data -> vtoc [ind] . filemap [frecno];
-//printf ("recno %d   0%o %c\n", recno, recno, m_data -> vtoc [ind] . sv + 'a');
     readRecord (m_data -> fd, recno, m_data -> vtoc [ind] . sv, data);
   }
 
@@ -887,32 +898,13 @@ static word36 readFileDataWord (struct m_state * m_data, int ind, uint wordno)
 static void processDirectory (struct m_state * m_data, int ind)
   {
     struct vtoc * vtocp = m_data -> vtoc + ind;
-    //printf ("%d %s\n", ind, vtocp -> name);
-    //VTOCE vtoce;
-    //readVTOCE (m_data -> fd, m_data -> vtoc [ind] . vtoce, m_data -> vtoc [ind] . sv, & vtoce);
-    //printf ("%012lo\n", vtoce [1]);
-#if 0
-    for (uint i = 0; i < 128; i ++)
-      {
-        word36 entry = vtoce [vtoce_fm_os + i];
-        printf ("%06lo  %06lo\n", (entry >> 18) & MASK18, entry & MASK18);
-      }
-#endif
-#if 0
-   for (uint k = 0; k < 32; k ++)
-     printf ("%012lo\n", readFileDataWord (m_data, ind, k));
-#endif
     word36 type_size = readFileDataWord (m_data, ind, 1);
-    //printf ("type %ld\n", (type_size >> 18) & MASK18);
-    //printf ("size %ld\n", type_size & MASK18);
     if (type_size != 0000003000100lu)
       {
         printf ("error in dir header type/size for ind %d\n", ind);
         return;
       }
     word36 vtocx_vers = readFileDataWord (m_data, ind, 13);
-    //printf ("type %ld\n", (type_size >> 18) & MASK18);
-    //printf ("size %ld\n", type_size & MASK18);
     if ((vtocx_vers & MASK18) != 2)
       {
         printf ("error in dir header version for ind %d\n", ind);
@@ -922,12 +914,9 @@ static void processDirectory (struct m_state * m_data, int ind)
     word36 seg_dir_cnt = readFileDataWord (m_data, ind, 18);
     vtocp -> seg_cnt = (seg_dir_cnt >> 18) & MASK18;
     vtocp -> dir_cnt = seg_dir_cnt & MASK18;
-    //printf ("seg_cnt %d\n", vtocp -> seg_cnt);
-    //printf ("dir_cnt %d\n", vtocp -> dir_cnt);
 
     word36 lcnt_acle  = readFileDataWord (m_data, ind, 19);
     vtocp -> lnk_cnt = (lcnt_acle >> 18) & MASK18;
-    //printf ("lcount %d\n", vtocp -> lnk_cnt);
 
     vtocp -> ent_cnt = vtocp -> seg_cnt + vtocp -> dir_cnt + vtocp -> lnk_cnt;
     vtocp -> entries = calloc (sizeof (struct entry), vtocp -> ent_cnt);
@@ -939,35 +928,25 @@ static void processDirectory (struct m_state * m_data, int ind)
 
     word36 entryfrpw = readFileDataWord (m_data, ind, 14);
     int entryfrp = (entryfrpw >> 18) & MASK18;
-    //printf ("entryfrp %06o %d\n", entryfrp, entryfrp);
 
     //word36 entrybrp = readFileDataWord (m_data, ind, 15);
     //entrybrp = (entrybrp >> 18) & MASK18;
-    //printf ("entrybrp %06lo %ld\n", entrybrp, entrybrp);
 
     int entry_cnt = 0;
     for (int entryp = entryfrp; entryp; )
       {
-        //printf ("entryp %o %d\n", entryp, entryp);
         word36 rp = readFileDataWord (m_data, ind, entryp);
         word18 efrp = (rp >> 18) & MASK18;
         //word18 ebrp = rp & MASK18;
-        //printf ("efrp %d ebrp %d\n", efrp, ebrp);
 
         word36 type_size = readFileDataWord (m_data, ind, entryp + 1);
-        //printf ("type_size %012lo\n", type_size);
         word18 type = (type_size >> 18) & MASK18;
         if (type == 0)
           {
-
-//for (int i = 0; i < 64; i ++)
-    //printf ("%3d %012lo\n", i, readFileDataWord (m_data, ind, entryp + i));
-
             goto next;
           }
 
         word36 uid = readFileDataWord (m_data, ind, entryp + 2);
-        //printf ("uid %012lo\n", uid);
         
         if (entry_cnt >= vtocp -> ent_cnt)
           {
@@ -979,6 +958,7 @@ static void processDirectory (struct m_state * m_data, int ind)
         char name [33 + 100];
         name [0] = 0;
         for (int j = 0; j < 8; j ++)
+//  entry include file says that the name starts at offset 8, but data dumps indicate offset 12
           strcat (name, str (readFileDataWord (m_data, ind, entryp + 8 + 4 + j)));
         for (int j = strlen (name) - 1; j >= 0; j --)
           if (name [j] == ' ')
@@ -989,19 +969,36 @@ static void processDirectory (struct m_state * m_data, int ind)
 // 5 link
 // 7 segment
         if (type != 7 && type != 4 && type !=5)
-          printf ("    %s\n", name);
+          printf ("    %d %s\n", type, name);
         vtocp -> entries [entry_cnt] . name = strdup (name);
         vtocp -> entries [entry_cnt] . uid = uid;
         vtocp -> entries [entry_cnt] . type = type;
         word36 bc = readFileDataWord (m_data, ind, entryp + 32);
         vtocp -> entries [entry_cnt] . bitcnt = bc & MASK24;
-//printf ("   %s %u\n", name, vtocp -> entries [entry_cnt] . bitcnt);
+
+        if (type == 5)
+          {
+            word18 pathname_size = readFileDataWord (m_data, ind, entryp + 24) & MASK18;
+            if (pathname_size > 168)
+              {
+                printf ("pathname_size %u truncated\n", pathname_size);
+                pathname_size = 168;
+              }
+            char pathname [169];
+            pathname [0] = 0;
+            for (int j = 0; j < 42; j ++)
+              strcat (pathname, str (readFileDataWord (m_data, ind, entryp + 25 + j)));
+            pathname [pathname_size] = 0;
+            //printf ("[%s]\n", pathname);
+            vtocp -> entries [entry_cnt] . link_target = strdup (pathname);
+          }
+
         entry_cnt ++;
 next:;
         entryp = efrp;
       }
-if (entry_cnt != vtocp -> ent_cnt)
-  printf ("entry_cnt %d ent_cnt %d\n", entry_cnt, vtocp -> ent_cnt);
+    if (entry_cnt != vtocp -> ent_cnt)
+      printf ("entry_cnt %d ent_cnt %d\n", entry_cnt, vtocp -> ent_cnt);
   }
 
 // return
@@ -1247,10 +1244,9 @@ int mx_lookup_path (const char * path)
   {
     struct m_state * m_data = M_DATA;
 
-    log_msg ("mx_lookup_path %s\n", path);
     if (path [0] != '/')
       {
-        log_msg ("mx_lookup_path not at root (%s)\n", path);
+        //log_msg ("mx_lookup_path not at root (%s)\n", path);
         return -1;
       }
     char * s = strdup (path);

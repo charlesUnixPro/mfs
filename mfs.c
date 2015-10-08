@@ -188,6 +188,7 @@ next:;
 
 static int m_getattr (const char * path, struct stat * statbuf)
   {
+
     memset (statbuf, 0, sizeof (struct stat));
 // find the directory path
     char s [strlen (path) + 1];
@@ -205,7 +206,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
     int dind = mx_lookup_path (s);
     if (dind < 0)
       {
-        printf ("m_getattr can't find [%s] [%s]\n", s, path);
+        //printf ("m_getattr can't find [%s] [%s]\n", s, path);
         return -ENOENT;
       }
     if (! (M_DATA -> vtoc [dind] . attr & 0400000))
@@ -214,27 +215,13 @@ static int m_getattr (const char * path, struct stat * statbuf)
         return -ENOENT;
       }
 
-
     int ind = mx_lookup_path (path);
-    if (ind < 0)
-      return -ENOENT;
-    char * basename = strrchr (path, '/');
-    if (! basename)
+    if (ind >= 0 &&
+        M_DATA -> vtoc [ind] . attr & 0400000) // is dir
       {
-        printf ("m_getattr no basename in %s\n", path);
-        return -ENOENT;
-      }
-    basename ++;
-    if (strlen (basename) == 0)
-      { // ? getattr of a directory
-        if (! (M_DATA -> vtoc [ind] . attr & 0400000))
-          {
-            printf ("getattr dir not dir? %s\n", path);
-            return -ENOENT;
-          }
-        statbuf ->  st_mtime = m2uTime (M_DATA -> vtoc [ind] . dtm);
-        statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [ind] . dtu);
-        statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [ind] . time_created);
+        statbuf -> st_mtime = m2uTime (M_DATA -> vtoc [ind] . dtm);
+        statbuf -> st_atime = m2uTime (M_DATA -> vtoc [ind] . dtu);
+        statbuf -> st_ctime = m2uTime (M_DATA -> vtoc [ind] . time_created);
         statbuf -> st_mode = S_IFDIR | 0555;
         statbuf -> st_uid = getuid ();;
         statbuf -> st_gid = getgid ();;
@@ -246,6 +233,19 @@ static int m_getattr (const char * path, struct stat * statbuf)
 
 // find basename in entries
 
+    char * basename = strrchr (path, '/');
+    if (! basename)
+      {
+        printf ("m_getattr no basename in %s\n", path);
+        return -ENOENT;
+      }
+    basename ++;
+    if (strlen (basename) == 0)
+      {
+        printf ("m_getattr no basename but not dir in %s?\n", path);
+        return -ENOENT;
+      }
+      
     struct entry * entryp = M_DATA -> vtoc [dind] . entries;
     int ent_cnt = M_DATA -> vtoc [dind] . ent_cnt;
     int eind;
@@ -254,7 +254,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
         break;
     if (eind >= ent_cnt)
       {
-        printf ("getattr can't find %s in entries\n", basename);
+        //printf ("getattr can't find %s in entries\n", basename);
         return -ENOENT;
       }
      
@@ -332,10 +332,83 @@ static int m_getattr (const char * path, struct stat * statbuf)
 #endif
   }
 
+static void unfixit (char * s)
+  {
+    size_t l = strlen (s);
+    for (size_t i = 0; i < l; i ++)
+      if (s [i] == '>')
+        s [i] = '/';
+  }
+
+static int m_readlink (const char * path, char * buf, size_t size)
+  {
+// find the directory path
+    char s [strlen (path) + 1];
+    strcpy (s, path);
+    char * last = strrchr (s, '/');
+    if (! last)
+      {
+        printf ("m_readlink no path in %s\n", path);
+        return -ENOENT;
+      }
+    if (s == last) // only root
+      strcpy (s, "/");
+    else
+      * last = 0;
+    int dind = mx_lookup_path (s);
+    if (dind < 0)
+      {
+        printf ("m_readlink can't find [%s] [%s]\n", s, path);
+        return -ENOENT;
+      }
+    if (! (M_DATA -> vtoc [dind] . attr & 0400000))
+      {
+        printf ("m_readlink dir not dir? [%s]\n", path);
+        return -ENOENT;
+      }
+
+// find basename in entries
+
+    char * basename = strrchr (path, '/');
+    if (! basename)
+      {
+        printf ("m_readlink no basename in %s\n", path);
+        return -ENOENT;
+      }
+    basename ++;
+    if (strlen (basename) == 0)
+      {
+        printf ("m_readlink no basename but not dir in %s?\n", path);
+        return -ENOENT;
+      }
+      
+    struct entry * entryp = M_DATA -> vtoc [dind] . entries;
+    int ent_cnt = M_DATA -> vtoc [dind] . ent_cnt;
+    int eind;
+    for (eind = 0; eind < ent_cnt; eind ++)
+      if (strcmp (basename, entryp [eind] . name) == 0)
+        break;
+    if (eind >= ent_cnt)
+      {
+        printf ("m_readlink can't find %s in entries\n", basename);
+        return -ENOENT;
+      }
+     
+    if (entryp [eind] . type != 5) // link
+      {
+        printf ("m_readlink %s not link\n", basename);
+        return -ENOENT;
+      }
+
+    strncpy (buf, entryp [eind] . link_target, size);
+    unfixit (buf);
+    return 0;
+  }
+
 struct fuse_operations m_oper =
  {
     .getattr = m_getattr,
-//    .readlink = m_readlink,
+    .readlink = m_readlink,
 //    // no .getdir -- that's deprecated
 //    .getdir = NULL,
 //    .mknod = m_mknod,
