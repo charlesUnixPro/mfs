@@ -147,6 +147,8 @@ next:;
             return -1;
           }
         st . st_mode = 0444;
+        st . st_uid = getuid ();;
+        st . st_gid = getgid ();;
         st . st_mtime = m2uTime (m_data -> vtoc [pri_ind] . dtm);
         st . st_atime = m2uTime (m_data -> vtoc [pri_ind] . dtu);
         st . st_ctime = m2uTime (m_data -> vtoc [pri_ind] . time_created);
@@ -164,6 +166,8 @@ next:;
     else if (entryp [offset] . type == 5) // link
       {
         st . st_mode = 0444;
+        st . st_uid = getuid ();;
+        st . st_gid = getgid ();;
         st . st_mtime = m2uTime (m_data -> vtoc [ind] . dtm);
         st . st_atime = m2uTime (m_data -> vtoc [ind] . dtu);
         st . st_ctime = m2uTime (m_data -> vtoc [ind] . time_created);
@@ -232,6 +236,8 @@ static int m_getattr (const char * path, struct stat * statbuf)
         statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [ind] . dtu);
         statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [ind] . time_created);
         statbuf -> st_mode = S_IFDIR | 0555;
+        statbuf -> st_uid = getuid ();;
+        statbuf -> st_gid = getgid ();;
         statbuf -> st_nlink = 1;
         statbuf -> st_size = 0;
         return 0;
@@ -255,10 +261,12 @@ static int m_getattr (const char * path, struct stat * statbuf)
     if (entryp [eind] . type == 5) // link
       {
         // XXX link times?
-        statbuf ->  st_mtime = 0;
-        statbuf ->  st_atime = 0;
-        statbuf ->  st_ctime = 0;
+        statbuf -> st_mtime = 0;
+        statbuf -> st_atime = 0;
+        statbuf -> st_ctime = 0;
         statbuf -> st_mode = S_IFLNK | 0444;
+        statbuf -> st_uid = getuid ();;
+        statbuf -> st_gid = getgid ();;
         statbuf -> st_nlink = 1;
         statbuf -> st_size = 0;
         return 0;
@@ -276,10 +284,11 @@ static int m_getattr (const char * path, struct stat * statbuf)
 
         return -1;
       }
-    statbuf ->  st_mode = 0444;
-    statbuf ->  st_mtime = m2uTime (M_DATA -> vtoc [pri_ind] . dtm);
-    statbuf ->  st_atime = m2uTime (M_DATA -> vtoc [pri_ind] . dtu);
-    statbuf ->  st_ctime = m2uTime (M_DATA -> vtoc [pri_ind] . time_created);
+    statbuf -> st_uid = getuid ();;
+    statbuf -> st_gid = getgid ();;
+    statbuf -> st_mtime = m2uTime (M_DATA -> vtoc [pri_ind] . dtm);
+    statbuf -> st_atime = m2uTime (M_DATA -> vtoc [pri_ind] . dtu);
+    statbuf -> st_ctime = m2uTime (M_DATA -> vtoc [pri_ind] . time_created);
     if (strcmp (path, "/") == 0)
       {
         statbuf -> st_mode = S_IFDIR | 0555;
