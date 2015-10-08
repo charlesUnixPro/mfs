@@ -193,7 +193,10 @@
 //                         
 //        
 // 16 128     2 fm (0:255) bit (18),                                  /* file map - 256 entries - 18 bits per entry */
+#define vtoce_fm_os 16
 //        
+// CAC: File map is a table of record #s; high bit on indicates NULL. See null_addresses.incl.pl1
+//
 //144  10     2 pad6 (10) bit (36),                                   /* not used */
 //        
 //154   .     2 ncd bit (1),                                          /* no complete dump switch */
@@ -378,6 +381,173 @@
 //  dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
 //      (0, 64, 64, 64, 64, 64, 64, 512, 512);
 //  
+
+
+//      /* Template for the directory header. Length = 64 words. */
+//      
+//      dcl  dp ptr;
+//      
+//      dcl 1 dir based (dp) aligned,
+//      
+//  0  1   2 modify bit (36),                                       /* Process ID of last modifier */
+//  1  .   2 type bit (18) unaligned,                     /* type of object = dir header */
+//     .   2 size fixed bin (17) unaligned,                         /* size of header in words */
+//          2 dtc (3),                                              /* date-time checked by salvager array */
+//  2  .      3 date bit (36),                                      /* the date */
+//     6      3 error bit (36),                                     /* what errors were discovered */
+//      
+//  8  1    2 uid bit (36),                                         /* uid of the directory           - copied from branch */
+//      
+//  9  1    2 pvid bit (36),                                        /* phys vol id of the dir         - copied from branch */
+//      
+// 10  1    2 sons_lvid bit (36),                                   /* log vol id for inf non dir seg - copied from branch */
+//      
+// 11  2    2 access_class bit (72),                                /* security attributes of dir     - copied from branch */
+//      
+// 13  .    (2 vtocx fixed bin (17),                                /* vtoc entry index of the dir    - copied from branch */
+//     1    2 version_number fixed bin (17),                        /* version number of header */
+//      
+// 14  .    2 entryfrp bit (18),                                    /* rel ptr to beginning of entry list */
+//     1    2 pad2 bit (18),
+//      
+// 15  .    2 entrybrp bit (18),                                    /* rel ptr to end of entry list */
+//     1    2 pad3 bit (18),
+//      
+// 16  .    2 pers_frp bit (18),                                    /* rel ptr to start of person name list */
+//     1    2 proj_frp bit (18),                                    /* rel ptr to start of project name list */
+//      
+// 17  .    2 pers_brp bit (18),                                    /* rel ptr to end of person name list */
+//     1    2 proj_brp bit (18),                                    /* rel ptr to end of project name list */
+//      
+// 18  .    2 seg_count fixed bin (17),                             /* number of non-directory branches */
+//     1    2 dir_count fixed bin (17),                             /* number of directory branches */
+//      
+// 19  .    2 lcount fixed bin (17),                                /* number of links */
+//     1    2 acle_total fixed bin (17),                            /* total number of ACL entries in directory */
+//      
+// 20  .    2 arearp bit (18),                                      /* relative pointer to beginning of allocation area */
+//     .    2 per_process_sw bit (1),                               /* indicates dir contains per process segments */
+//     .    2 master_dir bit (1),                                   /* TRUE if this is a master dir */
+//     .    2 force_rpv bit (1),                                    /* TRUE if segs must be on RPV */
+//     .    2 rehashing bit (1),                                    /* TRUE if hash table is being constructed */
+//     1    2 pad4 bit (14),
+//      
+// 21  .    2 iacl_count (0:7),
+//     .      3 seg fixed bin (17),                                 /* number of initial acl entries for segs */
+//     8      3 dir fixed bin (17),                                 /* number of initial acl entries for dir */
+//    
+// 29  .    2 iacl_count (0:7),
+//     .      3 seg_frp bit (18),                                   /* rel ptr to start of initial ACL for segs */
+//     .      3 seg_brp bit (18),                                   /* rel ptr to end of initial ACL for segs */
+//     .
+//     .      3 dir_frp bit (18),                                   /* rel ptr to start of initial for dirs */
+//    16      3 dir_brp bit (18),                                   /* rel ptr to end of initial ACL for dirs */
+//      
+// 45  .    2 htsize fixed bin (17),                                /* size of hash table */
+//     1    2 hash_table_rp bit (18),                               /* rel ptr to start of hash table */
+//      
+// 46  .    2 htused fixed bin (17),                                /* no. of used places in hash table */
+//     1    2 pad6 fixed bin (17),
+//      
+// 47  .    2 tree_depth fixed bin (17),                            /* number of levels from root of this dir */
+//     1    2 pad7 bit (18)) unaligned,
+//      
+// 48  1    2 dts bit (36),                                         /* date-time directory last salvaged */
+//      
+// 49  1    2 master_dir_uid bit (36),                              /* uid of superior master dir */
+// 50  1    2 change_pclock fixed bin (35),                         /* up one each call to sum$dirmod */
+// 51 11    2 pad8 (11) bit (36),                                   /* pad to make it a 64 word header */
+// 62  1    2 checksum bit (36),                                    /* checksummed from uid on */
+// 63  1    2 owner bit (36);                                       /* uid of parent dir */
+// 64    
+//      
+
+
+//
+//      /* Template for an entry. Length = 38 words */
+//      
+//      dcl  ep ptr;
+//      
+//      dcl 1 entry based (ep) aligned,
+//      
+//  0  .    (2 efrp bit (18),                                       /* forward rel ptr to next entry */
+//     1    2 ebrp bit (18)) unaligned,                             /* backward rel ptr to previous entry */
+//      
+//  1  .    2 type bit (18) unaligned,                              /* type of object = dir entry  */
+//     1    2 size fixed bin (17) unaligned,                        /* size of dir entry */
+//      
+//  2  1    2 uid bit (36),                                         /* unique id of entry */
+//      
+//  3  1    2 dtem bit (36),                                        /* date-time entry modified */
+//      
+//  4  .    (2 bs bit (1),                                          /* branch switch = 1 if branch */
+//     .    2 pad0 bit (17),
+//     1    2 nnames fixed bin (17),                                /* number of names for this entry */
+//      
+//  5  .    2 name_frp bit (18),                                    /* rel pointer to start of name list */
+//     1    2 name_brp bit (18),                                    /* rel pointer to end of name list */
+//      
+//  6  .    2 author,                                               /* user who created branch */
+//     .      3 pers_rp bit (18),                                   /* name of user who created branch */
+//     1      3 proj_rp bit (18),                                   /* project of user who created branch */
+//      
+//  7  .      3 tag char (1),                                       /* tag of user who created branch */
+//     1      3 pad1 char (3),
+//      
+//  8 14    2 primary_name bit (504),                               /* first name on name list */
+//      
+// 22  1    2 dtd bit (36),                                         /* date time dumped */
+//      
+// 23  1    2 pad2 bit (36),
+//      
+//      
+//      /* the declarations below are for branch only */
+//      
+//  24  1   2 pvid bit (36),                                        /* physical volume id */
+//      
+//  25  .   2 vtocx fixed bin (17),                                 /* vtoc entry index */
+//      1   2 pad3 bit (18),
+//      
+//  26  .   2 dirsw bit (1),                                        /* = 1 if this is a directory branch */
+//      .   2 oosw bit (1),                                         /* out of service switch  on = 1 */
+//      .   2 per_process_sw bit (1),                               /* indicates segment is per process */
+//      .   2 copysw bit (1),                                       /* = 1 make copy of segment whenever initiated */
+//      .   2 safety_sw bit (1),                                    /* if 1 then entry cannot be deleted */
+//      .   2 multiple_class bit (1),                               /* segment has multiple security classes */
+//      .   2 audit_flag bit (1),                                   /* segment must be audited for security */
+//      .   2 security_oosw bit (1),                                /* security out of service switch */
+//      .   2 entrypt_sw bit (1),                                   /* 1 if call limiter is to be enabled */
+//      .   2 master_dir bit (1),                                   /* TRUE for master directory */
+//      .   2 tpd bit (1),                                          /* TRUE if this segment is never to go on the PD */
+//      .   2 pad4 bit (11),
+//      1   2 entrypt_bound bit (14)) unaligned,                    /* call limiter */
+//      
+//  27  2   2 access_class bit (72) aligned,                        /* security attributes : level and category */
+//      
+//  29  .   (2 ring_brackets (3) bit (3),                           /* ring brackets on segment */
+//      .   2 ex_ring_brackets (3) bit (3),                         /* extended ring brackets */
+//      1   2 acle_count fixed bin (17),                            /* number of entries on ACL */
+//      
+//  30  .   2 acl_frp bit (18),                                     /* rel ptr to start of ACL */
+//      1   2 acl_brp bit (18),                                     /* rel ptr to end of ACL */
+//      
+//  31  .   2 bc_author,                                            /* user who last set the bit count */
+//      .     3 pers_rp bit (18),                                   /* name of user who set the bit count */
+//      1     3 proj_rp bit (18),                                   /* project of user who set the bit count */
+//      
+//  32  .     3 tag char (1),                                       /* tag of user who set the bit count */
+//      1     3 pad5 bit (2),
+//  33  1   2 bc fixed bin (24)) unaligned,                         /* bit count for segs, msf indicator for dirs */
+//      
+//  34  1   2 sons_lvid bit (36),                                   /* logical volume id for immediat inf non dir seg */
+//      
+//  35  1   2 pad6 bit (36),
+//      
+//  36  1   2 checksum bit (36),                                    /* checksum from dtd */
+//      
+//  37  1   2 owner bit (36);                                       /* uid of containing directory */
+//  38  
+
 
 
 // .dsk files 
@@ -647,20 +817,37 @@ static char * str (word36 w)
     return buf;
   }
 
+static struct
+  {
+    int rec;
+    int sv;
+    record data;
+  } cache = { -1, -1, { 1024 * 0 } };
+
 static void readRecord (int fd, int rec, int sv, record * data)
   {
+    if (cache . rec == rec && cache . sv == sv)
+      {
+        memcpy (data, & cache . data, sizeof (record));
+        return;
+      }
+
     int sect = r2s (rec, sv);
 //fprintf (stderr, "rr rec %d sect %d\n", rec, sect);
     off_t n = lseek (fd, sect * SECTOR_SZ_IN_BYTES, SEEK_SET);
 //fprintf (stderr, "rr rec %d sect %d offset %d %o\n", rec, sect, sect * 512, sect * 512);
     if (n == (off_t) -1)
       { fprintf (stderr, "2\n"); exit (1); }
-    ssize_t r = read (fd, data, sizeof (record));
+    ssize_t r = read (fd, & cache . data, sizeof (record));
     if (r != sizeof (record))
       { fprintf (stderr, "3\n"); exit (1); }
+    cache . rec = rec;
+    cache . sv = sv;
+    memcpy (data, & cache . data, sizeof (record));
   }
 
 #define MASK36 0777777777777
+#define MASK18 0000000777777
 
 static word36 vtoc_origin = 8;
 static word36 vtoc_header = 4;
@@ -679,6 +866,140 @@ static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
       (* data) [i] = extr36 (vtocepair, offset + i);
   }
 
+static void readFileDataRecord (struct m_state * m_data, int ind, uint frecno, record * data)
+  {
+    uint recno = m_data -> vtoc [ind] . filemap [frecno];
+//printf ("recno %d   0%o %c\n", recno, recno, m_data -> vtoc [ind] . sv + 'a');
+    readRecord (m_data -> fd, recno, m_data -> vtoc [ind] . sv, data);
+  }
+
+static word36 readFileDataWord (struct m_state * m_data, int ind, uint wordno)
+  {
+    // 1204 words/record.
+    uint frecno = wordno / 1024;
+    uint offset = wordno % 1024;
+    record rdata;
+    readFileDataRecord (m_data, ind, frecno, & rdata);
+    return extr36 (rdata, offset);
+  }
+
+static void processDirectory (struct m_state * m_data, int ind)
+  {
+    struct vtoc * vtocp = m_data -> vtoc + ind;
+    //printf ("%d %s\n", ind, vtocp -> name);
+    //VTOCE vtoce;
+    //readVTOCE (m_data -> fd, m_data -> vtoc [ind] . vtoce, m_data -> vtoc [ind] . sv, & vtoce);
+    //printf ("%012lo\n", vtoce [1]);
+#if 0
+    for (uint i = 0; i < 128; i ++)
+      {
+        word36 entry = vtoce [vtoce_fm_os + i];
+        printf ("%06lo  %06lo\n", (entry >> 18) & MASK18, entry & MASK18);
+      }
+#endif
+#if 0
+   for (uint k = 0; k < 32; k ++)
+     printf ("%012lo\n", readFileDataWord (m_data, ind, k));
+#endif
+    word36 type_size = readFileDataWord (m_data, ind, 1);
+    //printf ("type %ld\n", (type_size >> 18) & MASK18);
+    //printf ("size %ld\n", type_size & MASK18);
+    if (type_size != 0000003000100lu)
+      {
+        printf ("error in dir header type/size for ind %d\n", ind);
+        return;
+      }
+    word36 vtocx_vers = readFileDataWord (m_data, ind, 13);
+    //printf ("type %ld\n", (type_size >> 18) & MASK18);
+    //printf ("size %ld\n", type_size & MASK18);
+    if ((vtocx_vers & MASK18) != 2)
+      {
+        printf ("error in dir header version for ind %d\n", ind);
+        return;
+      }
+
+    word36 seg_dir_cnt = readFileDataWord (m_data, ind, 18);
+    vtocp -> seg_cnt = (seg_dir_cnt >> 18) & MASK18;
+    vtocp -> dir_cnt = seg_dir_cnt & MASK18;
+    //printf ("seg_cnt %d\n", vtocp -> seg_cnt);
+    //printf ("dir_cnt %d\n", vtocp -> dir_cnt);
+
+    word36 lcnt_acle  = readFileDataWord (m_data, ind, 19);
+    vtocp -> lnk_cnt = (lcnt_acle >> 18) & MASK18;
+    //printf ("lcount %d\n", vtocp -> lnk_cnt);
+
+    vtocp -> ent_cnt = vtocp -> seg_cnt + vtocp -> dir_cnt + vtocp -> lnk_cnt;
+    vtocp -> entries = calloc (sizeof (struct entry), vtocp -> ent_cnt);
+    if (vtocp -> entries == NULL)
+      {
+        perror ("entries alloc");
+        abort ();
+      }
+
+    word36 entryfrpw = readFileDataWord (m_data, ind, 14);
+    int entryfrp = (entryfrpw >> 18) & MASK18;
+    //printf ("entryfrp %06o %d\n", entryfrp, entryfrp);
+
+    //word36 entrybrp = readFileDataWord (m_data, ind, 15);
+    //entrybrp = (entrybrp >> 18) & MASK18;
+    //printf ("entrybrp %06lo %ld\n", entrybrp, entrybrp);
+
+    int entry_cnt = 0;
+    for (int entryp = entryfrp; entryp; )
+      {
+        //printf ("entryp %o %d\n", entryp, entryp);
+        word36 rp = readFileDataWord (m_data, ind, entryp);
+        word18 efrp = (rp >> 18) & MASK18;
+        //word18 ebrp = rp & MASK18;
+        //printf ("efrp %d ebrp %d\n", efrp, ebrp);
+
+        word36 type_size = readFileDataWord (m_data, ind, entryp + 1);
+        //printf ("type_size %012lo\n", type_size);
+        word18 type = (type_size >> 18) & MASK18;
+        if (type == 0)
+          {
+
+//for (int i = 0; i < 64; i ++)
+    //printf ("%3d %012lo\n", i, readFileDataWord (m_data, ind, entryp + i));
+
+            goto next;
+          }
+
+        word36 uid = readFileDataWord (m_data, ind, entryp + 2);
+        //printf ("uid %012lo\n", uid);
+        
+        if (entry_cnt >= vtocp -> ent_cnt)
+          {
+            printf ("entries overflow\n");
+            abort ();
+          }
+
+
+        char name [33 + 100];
+        name [0] = 0;
+        for (int j = 0; j < 8; j ++)
+          strcat (name, str (readFileDataWord (m_data, ind, entryp + 8 + 4 + j)));
+        for (int j = strlen (name) - 1; j >= 0; j --)
+          if (name [j] == ' ')
+            name [j] = 0;
+          else
+            break;
+// 4 directory
+// 5 link
+// 7 segment
+        if (type != 7 && type != 4 && type !=5)
+          printf ("    %s\n", name);
+        vtocp -> entries [entry_cnt] . name = strdup (name);
+        vtocp -> entries [entry_cnt] . uid = uid;
+        vtocp -> entries [entry_cnt] . type = type;
+        entry_cnt ++;
+next:;
+        entryp = efrp; 
+      }
+if (entry_cnt != vtocp -> ent_cnt)
+  printf ("entry_cnt %d ent_cnt %d\n", entry_cnt, vtocp -> ent_cnt);
+  }
+
 // return
 //  0 ok
 //  -1 Can't open disk image
@@ -686,15 +1007,15 @@ static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
 
 int mx_mount (struct m_state * m_data)
   {
-    int fd = open (m_data -> dsknam, O_RDONLY);
-    if (fd < 0)
+    m_data -> fd = open (m_data -> dsknam, O_RDONLY);
+    if (m_data -> fd < 0)
       return -1;
 
 // Get the disk label; verify that it is a Multics volume
 
     record r0;
     memset (& r0, 0, sizeof (record));
-    readRecord (fd, 0, 0, & r0);
+    readRecord (m_data -> fd, 0, 0, & r0);
 #if 0
     for (int i = 0; i < 1024; i ++)
       {
@@ -787,7 +1108,7 @@ int mx_mount (struct m_state * m_data)
       {
         record vtoch;
         memset (& vtoch, 0, sizeof (record));
-        readRecord (fd, vtoc_header, sv, & vtoch);
+        readRecord (m_data -> fd, vtoc_header, sv, & vtoch);
         //word36 n_vtoces = extr36 (vtoch, vtoc_header_n_vtoce_os);
         //word36 n_free_vtoces = extr36 (vtoch, vtoc_header_n_free_vtoce);
         word36 vtoc_last_recno = extr36 (vtoch, vtoc_header_vtoc_last_recno);
@@ -806,7 +1127,7 @@ int mx_mount (struct m_state * m_data)
         abort ();
       }
 
-// Build uid, attr  and name table
+// Build uid, attr and name table
 
     m_data -> vtoc_cnt = 0;
     for (int sv = 0; sv < 3; sv ++)
@@ -814,7 +1135,7 @@ int mx_mount (struct m_state * m_data)
         for (int i = 0; i < m_data -> vtoc_no [sv]; i ++)
           {
             VTOCE vtoce;
-            readVTOCE (fd, i, sv, & vtoce);
+            readVTOCE (m_data -> fd, i, sv, & vtoce);
             word36 uid = vtoce [1];
             if (! uid)
               continue;
@@ -825,6 +1146,12 @@ int mx_mount (struct m_state * m_data)
             m_data -> vtoc [m_data -> vtoc_cnt] . time_created = vtoce [184];
             m_data -> vtoc [m_data -> vtoc_cnt] . sv = sv;
             m_data -> vtoc [m_data -> vtoc_cnt] . vtoce= i;
+            for (uint fmi = 0; fmi < 128; fmi ++)
+              {
+                m_data -> vtoc [m_data -> vtoc_cnt] . filemap [fmi * 2] = (vtoce [vtoce_fm_os + fmi] >> 18) & MASK18;
+                m_data -> vtoc [m_data -> vtoc_cnt] . filemap [fmi * 2 + 1] = vtoce [vtoce_fm_os + fmi] & MASK18;
+              }
+
             if (uid == 0777777777777lu) // root
               {
                 m_data -> vtoc [m_data -> vtoc_cnt] . name = strdup (">");
@@ -843,6 +1170,9 @@ int mx_mount (struct m_state * m_data)
                      break;
                 m_data -> vtoc [m_data -> vtoc_cnt] .name = strdup (name);
               }
+
+            if (m_data -> vtoc [m_data -> vtoc_cnt] . attr & 0400000)
+              processDirectory (m_data, m_data -> vtoc_cnt);
             m_data -> vtoc_cnt ++;
           }
       }
@@ -856,7 +1186,7 @@ int mx_mount (struct m_state * m_data)
         fq_name [0] = 0;
 
         VTOCE vtoce;
-        readVTOCE (fd, m_data -> vtoc [i] . vtoce, m_data -> vtoc [i] . sv, & vtoce);
+        readVTOCE (m_data -> fd, m_data -> vtoc [i] . vtoce, m_data -> vtoc [i] . sv, & vtoce);
         for (int j = 0; j < 16; j ++)
           {
             word36 path_uid = vtoce [160 + j];
@@ -899,9 +1229,20 @@ int mx_mount (struct m_state * m_data)
         //log_msg ("%4d  ", i);
         //log_msg (" (%s)\n", fq_name);
       }
+
+#if 0
+    int ind;
+    for (ind = 0; ind < m_data -> vtoc_cnt; ind ++)
+      if (m_data -> vtoc [ind] . attr & 0400000)
+        break;
+#endif
+    //int ind = 0; // '>'
+    //processDirectory (m_data, ind);
+//abort();
     return 0;
   }
 
+#if 0
 int find_uid (word36 uid)
   {
     int vtoc_cnt = M_DATA -> vtoc_cnt;
@@ -911,6 +1252,7 @@ int find_uid (word36 uid)
         return i;
     return -1;
   }
+#endif
 
 #if 0
 int find_entry (char * name, word36 * upath, int npath)
@@ -918,7 +1260,7 @@ int find_entry (char * name, word36 * upath, int npath)
     for (uint i = 0; i < vtoc_no; i ++)
       {
         VTOCE vtoce;
-        readVTOCE (fd, i, & vtoce);
+        readVTOCE (m_data -> fd, i, & vtoce);
         word36 uid = vtoce [1];
         if (uid)
           {
@@ -978,8 +1320,6 @@ int mx_lookup_path (const char * path)
     fixit (s);
     for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
-        if (! m_data -> vtoc [i] . uid)
-          continue;
 //log_msg ("%s %s\n", s, m_data -> vtoc [i] . fq_name);
         if (strcmp (s, m_data -> vtoc [i] . fq_name) == 0)
           return i;
@@ -987,49 +1327,5 @@ int mx_lookup_path (const char * path)
     return -1;
   }
 
-// search for entries that are in the directory 'path'
-int mx_readdir (off_t offset, const char * path)
-  {
-    struct m_state * m_data = M_DATA;
-    size_t sl = strlen (path);
-    char s [sl + 2];
-    strcpy (s, path);
-    fixit (s);
-    if (s [sl -1] != '>')
-      {
-        strcat (s, ">");
-        sl ++;
-      }
-//printf ("mx_readdir fixit [%s]\n", s);
-    for (int i = offset; i < m_data -> vtoc_cnt; i ++)
-      {
-#if 0
-        char * fq = m_data -> vtoc [i] . fq_name;
-        size_t fql = strlen (fq);
 
-        // Find the rightmost > in fq_name
-        char * last = strrchr (fq, '>');
-        if (! last)
-          {
-            printf ("not last? %d %s\n", i, fq);
-            continue;
-          }
-        size_t dir_len = last - fq + 1;
-        if (dir_len != sl)
-          continue;
-        if (fql <= sl)
-          continue;
-        if (strncmp (s, fq, sl) == 0)
-          {
-//printf ("mx_readdir %ld %s %s\n", sl, s, fq);
-            return i;
-          }
-#else
-        if (strcmp (s, m_data -> vtoc [i] . dir_name) == 0)
-          {
-            return i;
-          }
-#endif
-      }
-    return -1;
-  }
+

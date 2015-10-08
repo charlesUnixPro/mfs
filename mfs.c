@@ -100,29 +100,54 @@ static time_t m2uTime (word36 mtime)
     return utime;
   }
 
+static int find_uid (struct m_state * m_data, word36 uid)
+  {
+    int vtoc_cnt = m_data -> vtoc_cnt;
+    struct vtoc * vtoc = m_data -> vtoc;
+    for (int i = 0; i < vtoc_cnt; i ++)
+      if (vtoc [i] . uid == uid)
+        return i;
+    return -1;
+  }
 
 static int m_readdir (const char * path, void * buf, 
                       fuse_fill_dir_t filler,
                       off_t offset, struct fuse_file_info * fi)
   {
-    struct m_state * m_data = M_DATA;
-next:;
-//printf ("m_readdir path %s offset %ld\n", path, offset);
-    int ind = mx_readdir (offset, path);
+    int ind = mx_lookup_path (path);
     if (ind < 0)
+      {
+        printf ("mx_lookup_path of %s failed\n", path);
+        return -1;
+      }   
+    struct m_state * m_data = M_DATA;
+
+next:;
+    struct vtoc * vtocp = m_data -> vtoc + ind;
+    struct entry * entryp = vtocp -> entries;
+
+    if (offset >= vtocp -> ent_cnt)
       return 0;
-//printf ("readdir ind %d %s\n", ind, m_data -> vtoc [ind] . fq_name);
+    int pri_ind = find_uid (m_data, entryp [offset] . uid);
+    if (pri_ind < 0)
+      {
+        printf ("find_uid failed; uid %012lo %s\n", entryp [offset] . uid, entryp [offset] . name);
+        return -1;
+      }
     struct stat st;
     memset (& st, 0, sizeof (st));
     st . st_mode = 0444;
-    st . st_mtime = m2uTime (m_data -> vtoc [ind] . dtm);
-    st . st_atime = m2uTime (m_data -> vtoc [ind] . dtu);
-    st . st_ctime = m2uTime (m_data -> vtoc [ind] . time_created);
-    int f = filler (buf, m_data -> vtoc [ind] . name, & st, ind + 1);
-//printf ("filler returned %d\n", f);
+    st . st_mtime = m2uTime (m_data -> vtoc [pri_ind] . dtm);
+    st . st_atime = m2uTime (m_data -> vtoc [pri_ind] . dtu);
+    st . st_ctime = m2uTime (m_data -> vtoc [pri_ind] . time_created);
+    int f;
+    if (strcmp (">", entryp [offset] . name) == 0)
+        f = filler (buf, "/", & st, offset + 1);
+    else
+        f = filler (buf, entryp [offset] . name, & st, offset + 1);
     if (f == 0)
       {
-        offset = ind + 1;
+        offset ++;
         goto next;
       }
     return 0;
@@ -130,9 +155,7 @@ next:;
 
 static int m_getattr (const char * path, struct stat * statbuf)
   {
-//log_msg ("getattr %s\n", path);
     int ind = mx_lookup_path (path);
-//log_msg ("getattr lookup of %s found %d\n", path, ind);
     if (ind < 0)
       return -ENOENT;
 //log_msg ("getattr lookup of %s found %s\n", path, M_DATA -> vtoc [ind] . fq_name);
@@ -274,9 +297,7 @@ int main (int argc, char * argv [])
 
     mx_mount (m_data);
     umask (0);
-    //fprintf (stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main (argc, argv, & m_oper, m_data);
-    //fprintf (stderr, "fuse_main returned %d\n", fuse_stat);
 
     return fuse_stat;
 }

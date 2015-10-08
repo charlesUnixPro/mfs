@@ -22,10 +22,21 @@ typedef uint64_t word36;
 typedef unsigned int uint;
 typedef __uint128_t word72;
 
+struct entry
+  {
+    char * name;
+    word36 uid;
+// 4 directory
+// 5 link
+// 7 segment
+    int type;
+  };
+
 struct m_state
   {
     FILE * logfile;
     char * dsknam;
+    int fd;
     struct vtoc
       {
         word36 uid;   
@@ -38,6 +49,13 @@ struct m_state
         time_t time_created;
         int sv;
         int vtoce;
+        int32_t filemap [256];
+// directory
+        int seg_cnt;
+        int dir_cnt;
+        int lnk_cnt;
+        int ent_cnt;
+        struct entry * entries;
       } * vtoc;
 
     int vtoc_no [3];
