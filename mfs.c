@@ -33,6 +33,7 @@ static void m_usage (void)
     abort ();
   }
 
+#if 0
 static FILE * log_open (void)
   {
     FILE * logfile;
@@ -59,6 +60,7 @@ void log_msg (const char * format, ...)
 
     vfprintf (M_DATA -> logfile, format, ap);
   }   
+#endif
 
 #if 0
 //  All the paths I see are relative to the root of the mounted
@@ -116,7 +118,7 @@ static int m_readdir (const char * path, void * buf,
   {
     struct stat st;
     memset (& st, 0, sizeof (st));
-    int ind = mx_lookup_path (path);
+    int ind = mx_lookup_path (M_DATA, path);
     if (ind < 0)
       {
         printf ("mx_lookup_path of %s failed\n", path);
@@ -186,9 +188,80 @@ next:;
     return 0;
   }
 
+static int get_entry (const char * path, int * dindp, int * eindp)
+  {
+// find the directory path
+    char s [strlen (path) + 1];
+    strcpy (s, path);
+    char * last = strrchr (s, '/');
+    if (! last)
+      {
+        printf ("m_getattr no path in %s\n", path);
+        return -ENOENT;
+      }
+    if (s == last) // only root
+      strcpy (s, "/");
+    else
+      * last = 0;
+    int dind = mx_lookup_path (M_DATA, s);
+    if (dind < 0)
+      {
+        //printf ("m_getattr can't find [%s] [%s]\n", s, path);
+        return -ENOENT;
+      }
+    if (! (M_DATA -> vtoc [dind] . attr & 0400000))
+      {
+        printf ("m_getattr dir not dir? [%s]\n", path);
+        return -ENOENT;
+      }
+
+// find basename in entries
+
+    char * basename = strrchr (path, '/');
+    if (! basename)
+      {
+        printf ("m_getattr no basename in %s\n", path);
+        return -ENOENT;
+      }
+    basename ++;
+    if (strlen (basename) == 0)
+      {
+        printf ("m_getattr no basename but not dir in %s?\n", path);
+        return -ENOENT;
+      }
+      
+    struct entry * entryp = M_DATA -> vtoc [dind] . entries;
+    int ent_cnt = M_DATA -> vtoc [dind] . ent_cnt;
+    int eind;
+    for (eind = 0; eind < ent_cnt; eind ++)
+      if (strcmp (basename, entryp [eind] . name) == 0)
+        break;
+    if (eind >= ent_cnt)
+      {
+        //printf ("getattr can't find %s in entries\n", basename);
+        return -ENOENT;
+      }
+     
+#if 0
+    int pri_ind = find_uid (M_DATA, entryp [eind] . uid);
+    if (pri_ind < 0)
+      {
+        printf ("find_uid failed; uid %012lo %s\n", entryp [eind] . uid, entryp [eind] . name);
+        printf ("  path %s\n", path);
+        printf ("  eind %d\n", eind);
+        //printf ("  ent_cnt %d\n", vtocp -> ent_cnt);
+        printf ("  type %d\n", entryp [eind] . type);
+
+        return -1;
+      }
+#endif
+    * eindp = eind;
+    * dindp = dind;
+    return entryp [eind] .pri_ind;
+  }
+
 static int m_getattr (const char * path, struct stat * statbuf)
   {
-
     memset (statbuf, 0, sizeof (struct stat));
 // find the directory path
     char s [strlen (path) + 1];
@@ -203,7 +276,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
       strcpy (s, "/");
     else
       * last = 0;
-    int dind = mx_lookup_path (s);
+    int dind = mx_lookup_path (M_DATA, s);
     if (dind < 0)
       {
         //printf ("m_getattr can't find [%s] [%s]\n", s, path);
@@ -215,7 +288,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
         return -ENOENT;
       }
 
-    int ind = mx_lookup_path (path);
+    int ind = mx_lookup_path (M_DATA, path);
     if (ind >= 0 &&
         M_DATA -> vtoc [ind] . attr & 0400000) // is dir
       {
@@ -355,7 +428,7 @@ static int m_readlink (const char * path, char * buf, size_t size)
       strcpy (s, "/");
     else
       * last = 0;
-    int dind = mx_lookup_path (s);
+    int dind = mx_lookup_path (M_DATA, s);
     if (dind < 0)
       {
         printf ("m_readlink can't find [%s] [%s]\n", s, path);
@@ -405,6 +478,21 @@ static int m_readlink (const char * path, char * buf, size_t size)
     return 0;
   }
 
+static int m_open (const char * path, struct fuse_file_info * fi)
+  {
+    int eind, dind;
+    int ind = get_entry (path, & dind, & eind);
+    if (ind < 0)
+      return -ENOENT;
+    fi -> fh = (uint64_t) (M_DATA -> vtoc [dind] . entries + eind);
+    return 0;
+  }
+ 
+static int m_read (const char * path, char * buf, size_t size, off_t offset, struct fuse_file_info * fi)
+  {
+    return mx_read (buf, size, offset, (struct entry *) (fi -> fh));
+  }
+
 struct fuse_operations m_oper =
  {
     .getattr = m_getattr,
@@ -422,8 +510,8 @@ struct fuse_operations m_oper =
 //    .chown = m_chown,
 //    .truncate = m_truncate,
 //    .utime = m_utime,
-//    .open = m_open,
-//    .read = m_read,
+    .open = m_open,
+    .read = m_read,
 //    .write = m_write,
 //    /** Just a placeholder, don't set */ // huh???
 //    .statfs = m_statfs,
@@ -480,7 +568,7 @@ int main (int argc, char * argv [])
     argv [argc - 1] = NULL;
     argc --;
 
-    m_data -> logfile = log_open ();
+    //m_data -> logfile = log_open ();
 
     mx_mount (m_data);
     umask (0);
