@@ -831,8 +831,12 @@ static char * str (word36 w)
     buf [3] = (w >>  0) & 0377;
     buf [4] = 0;
     for (int i = 0; i < 4; i ++)
-      if (! isprint (buf [i]))
-        buf [i] = '?';
+      {
+        if (buf[i] == '/')
+          buf [i] = '\\';
+        else if (! isprint (buf [i]))
+          buf [i] = '?';
+      }
     return buf;
   }
 
@@ -1013,6 +1017,7 @@ fprintf (stderr, "processDirectory 6\n");
             name [j] = 0;
           else
             break;
+fprintf (stderr, "processDirectory 6 type: %d name: '%s'\n", type, name);
 // 4 directory
 // 5 link
 // 7 segment
@@ -1307,6 +1312,7 @@ fprintf (stderr, "mx_mount 6\n");
                    else
                      break;
                 m_data -> vtoc [m_data -> vtoc_cnt] .name = strdup (name);
+fprintf (stderr, "mx_mount 6 name: '%s'\n", name);
               }
             m_data -> vtoc_cnt ++;
           }
@@ -1349,6 +1355,7 @@ fprintf (stderr, "mx_mount 8\n");
           }
 
         m_data -> vtoc [i] . dir_name = strdup (fq_name);
+fprintf (stderr, "mx_mount 8 dir name: '%s'\n", fq_name);
 
         char name [33];
         name [0] = 0;
@@ -1361,6 +1368,7 @@ fprintf (stderr, "mx_mount 8\n");
             break;
         strcat (fq_name, name);
         m_data -> vtoc [i] . fq_name = strdup (fq_name);
+fprintf (stderr, "mx_mount 8 fq name: '%s'\n", fq_name);
       }
 
 // Build directory entries
