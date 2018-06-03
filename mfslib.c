@@ -13,7 +13,7 @@
 #include "mfslib.h"
 
 #ifndef DEBUG
-#define fprinff(foo, bar, ...)
+#define fprintf(foo, bar, ...)
 #endif
 
 // AN61 VM MPM
