@@ -12,6 +12,7 @@
 
 #include "mfslib.h"
 
+//#define DEBUG
 #ifndef DEBUG
 #define fprintf(foo, bar, ...)
 #endif
@@ -894,6 +895,13 @@ static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
 static void readFileDataRecord (struct m_state * m_data, int ind, uint frecno, record * data)
   {
     uint recno = m_data -> vtoc [ind] . filemap [frecno];
+fprintf (stderr, "readFileDataRecord frecno %u recno %u\n", frecno, recno);
+    // High bit on indicates unallocated record
+    if (recno & 0400000)
+      {
+        memset (data, 0, sizeof (record));
+        return;
+      }
     readRecord (m_data -> fd, recno, m_data -> vtoc [ind] . sv, data);
   }
 
@@ -1408,9 +1416,11 @@ int mx_lookup_path (struct m_state * m_data , const char * path)
 
 int mx_read (char * buf, size_t size, off_t offset, struct entry * entryp)
   {
+fprintf (stderr, "mx_read size %ld offset %ld\n", size, offset);
     struct m_state * m_data = M_DATA;
 
     uint byte_cnt = (entryp -> bitcnt + 7) / 8;
+fprintf (stderr, "mx_read bitcnt %u byte_cnt %u\n", entryp -> bitcnt, byte_cnt);
     if (offset > byte_cnt)
       return 0;
 
@@ -1418,6 +1428,7 @@ int mx_read (char * buf, size_t size, off_t offset, struct entry * entryp)
     if (end > byte_cnt)
       {
         size = byte_cnt - offset;
+fprintf (stderr, "size adjusted to %ld\n", size);
       }
     int writ = 0;
     while (size)
@@ -1425,6 +1436,7 @@ int mx_read (char * buf, size_t size, off_t offset, struct entry * entryp)
         off_t recno = offset / RECORD_SZ_IN_BYTES;
         off_t recos = offset % RECORD_SZ_IN_BYTES;
         record rdata;
+fprintf (stderr, "recno %lu recos %lu\n", recno, recos);
         readFileDataRecord (m_data, entryp -> pri_ind, recno, & rdata);
         size_t residue = RECORD_SZ_IN_BYTES - recos;
         uint mv;

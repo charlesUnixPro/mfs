@@ -5,6 +5,12 @@
   See the file COPYING.
 */
 
+//#define DEBUG
+
+#ifndef DEBUG
+#define fprintf(foo, bar, ...)
+#endif
+
 #include "mfs.h"
 
 #include <limits.h>
@@ -480,11 +486,13 @@ static int m_readlink (const char * path, char * buf, size_t size)
 
 static int m_open (const char * path, struct fuse_file_info * fi)
   {
+fprintf (stderr, "m_open %s\n", path);
     int eind, dind;
     int ind = get_entry (path, & dind, & eind);
     if (ind < 0)
       return -ENOENT;
     fi -> fh = (uint64_t) (M_DATA -> vtoc [dind] . entries + eind);
+fprintf (stderr, "m_open ok\n");
     return 0;
   }
  

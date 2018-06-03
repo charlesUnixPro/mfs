@@ -1551,6 +1551,13 @@ static int mx_mount (struct m_state * m_data)
                 m_data->vtoc [m_data->vtoc_cnt] .name = strdup (name);
               }
             printf ("   %5d. %6o [%5o:%4o][%6o] %s\n", i, i, vtoce_recnum, vtoce_offset, last_sect, m_data->vtoc[m_data->vtoc_cnt].name);
+            for (uint i = 0; i < 256; i += 8)
+              {
+                printf ("       %5d: ", i);
+                for (uint j = 0; j < 8; j ++)
+                  printf ("%8d", m_data->vtoc[m_data->vtoc_cnt].filemap [i + j]);
+                printf ("\n");
+              }
             m_data->vtoc_cnt ++;
           }
       }
