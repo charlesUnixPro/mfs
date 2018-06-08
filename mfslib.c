@@ -13,8 +13,11 @@
 #include "mfslib.h"
 
 //#define DEBUG
-#ifndef DEBUG
-#define fprintf(foo, bar, ...)
+
+#ifdef DEBUG
+#define dprintf fprintf
+#else
+#define dprintf(foo, bar, ...)
 #endif
 
 // AN61 VM MPM
@@ -787,7 +790,7 @@ uint8_t getbit (void * bits, int offset)
     uint8_t byte = p [byte_offset];
     byte >>= bit_offset;
     byte &= 1;
-    //fprintf (stderr, "offset %d, byte_offset %d, bit_offset %d, byte %x, bit %x\n", offset, byte_offset, bit_offset, p [byte_offset], byte);
+    dprintf (stderr, "offset %d, byte_offset %d, bit_offset %d, byte %x, bit %x\n", offset, byte_offset, bit_offset, p [byte_offset], byte);
     return byte;
   }
 
@@ -804,7 +807,7 @@ uint64_t extr (void * bits, int offset, int nbits)
       {
         n <<= 1;
         n |= getbit (bits, i + offset);
-        //fprintf (stderr, "012lo\n", n);
+        dprintf (stderr, "012lo\n", n);
       }
     return n;
   }
@@ -850,16 +853,16 @@ static struct
 
 static void readRecord (int fd, int rec, int sv, record * data)
   {
-fprintf (stderr, "readRecord 1\n");
+dprintf (stderr, "readRecord 1\n");
     if (cache . rec == rec && cache . sv == sv)
       {
-fprintf (stderr, "readRecord 2\n");
+dprintf (stderr, "readRecord 2\n");
         memcpy (data, & cache . data, sizeof (record));
         return;
       }
 
     int sect = r2s (rec, sv);
-fprintf (stderr, "readRecord lseek rec %d sect %d offset %d\n", rec, sect, sect * SECTOR_SZ_IN_BYTES);
+dprintf (stderr, "readRecord lseek rec %d sect %d offset %d\n", rec, sect, sect * SECTOR_SZ_IN_BYTES);
     off_t n = lseek (fd, sect * SECTOR_SZ_IN_BYTES, SEEK_SET);
     if (n == (off_t) -1)
       { fprintf (stderr, "2\n"); exit (1); }
@@ -895,7 +898,7 @@ static void readVTOCE (int fd, int entNo, int sv, VTOCE * data)
 static void readFileDataRecord (struct m_state * m_data, int ind, uint frecno, record * data)
   {
     uint recno = m_data -> vtoc [ind] . filemap [frecno];
-fprintf (stderr, "readFileDataRecord frecno %u recno %u\n", frecno, recno);
+dprintf (stderr, "readFileDataRecord frecno %u recno %u\n", frecno, recno);
     // High bit on indicates unallocated record
     if (recno & 0400000)
       {
@@ -947,26 +950,26 @@ static void fixit (char * s)
 
 static void processDirectory (struct m_state * m_data, int ind)
   {
-fprintf (stderr, "processDirectory 1 ind %d\n", ind);
+dprintf (stderr, "processDirectory 1 ind %d\n", ind);
     struct vtoc * vtocp = m_data -> vtoc + ind;
-fprintf (stderr, "processDirectory 1a\n");
+dprintf (stderr, "processDirectory 1a\n");
     word36 type_size = readFileDataWord36 (m_data, ind, 1);
     if (type_size != 0000003000100lu)
       {
-fprintf (stderr, "processDirectory 1b\n");
+dprintf (stderr, "processDirectory 1b\n");
         fprintf (stderr, "error in dir header type/size for ind %d\n", ind);
         return;
       }
-fprintf (stderr, "processDirectory 1c\n");
+dprintf (stderr, "processDirectory 1c\n");
     word36 vtocx_vers = readFileDataWord36 (m_data, ind, 13);
     if ((vtocx_vers & MASK18) != 2)
       {
-fprintf (stderr, "processDirectory 1d\n");
+dprintf (stderr, "processDirectory 1d\n");
         fprintf (stderr, "error in dir header version for ind %d\n", ind);
         return;
       }
 
-fprintf (stderr, "processDirectory 2\n");
+dprintf (stderr, "processDirectory 2\n");
     word36 seg_dir_cnt = readFileDataWord36 (m_data, ind, 18);
     vtocp -> seg_cnt = (seg_dir_cnt >> 18) & MASK18;
     vtocp -> dir_cnt = seg_dir_cnt & MASK18;
@@ -982,7 +985,7 @@ fprintf (stderr, "processDirectory 2\n");
         abort ();
       }
 
-fprintf (stderr, "processDirectory 3\n");
+dprintf (stderr, "processDirectory 3\n");
     word36 entryfrpw = readFileDataWord36 (m_data, ind, 14);
     int entryfrp = (entryfrpw >> 18) & MASK18;
 
@@ -992,7 +995,7 @@ fprintf (stderr, "processDirectory 3\n");
     int entry_cnt = 0;
     for (int entryp = entryfrp; entryp; )
       {
-fprintf (stderr, "processDirectory 4 entryp %d\n", entryp);
+dprintf (stderr, "processDirectory 4 entryp %d\n", entryp);
         word36 rp = readFileDataWord36 (m_data, ind, entryp);
         word18 efrp = (rp >> 18) & MASK18;
         //word18 ebrp = rp & MASK18;
@@ -1004,7 +1007,7 @@ fprintf (stderr, "processDirectory 4 entryp %d\n", entryp);
             goto next;
           }
 
-fprintf (stderr, "processDirectory 5\n");
+dprintf (stderr, "processDirectory 5\n");
         word36 uid = readFileDataWord36 (m_data, ind, entryp + 2);
         
         if (entry_cnt >= vtocp -> ent_cnt)
@@ -1013,7 +1016,7 @@ fprintf (stderr, "processDirectory 5\n");
             abort ();
           }
 
-fprintf (stderr, "processDirectory 6\n");
+dprintf (stderr, "processDirectory 6\n");
 
         char name [33 + 100];
         name [0] = 0;
@@ -1025,13 +1028,13 @@ fprintf (stderr, "processDirectory 6\n");
             name [j] = 0;
           else
             break;
-fprintf (stderr, "processDirectory 6 type: %d name: '%s'\n", type, name);
+dprintf (stderr, "processDirectory 6 type: %d uid: %012lo name: '%s'\n", type, uid, name);
 // 4 directory
 // 5 link
 // 7 segment
         if (type != 7 && type != 4 && type !=5)
           printf ("    %d %s\n", type, name);
-fprintf (stderr, "processDirectory 7\n");
+dprintf (stderr, "processDirectory 7\n");
         vtocp -> entries [entry_cnt] . name = strdup (name);
         vtocp -> entries [entry_cnt] . uid = uid;
         vtocp -> entries [entry_cnt] . type = type;
@@ -1040,7 +1043,7 @@ fprintf (stderr, "processDirectory 7\n");
 
         if (type == 5) // link
           {
-fprintf (stderr, "processDirectory 8\n");
+dprintf (stderr, "processDirectory 8\n");
             word18 pathname_size = readFileDataWord36 (m_data, ind, entryp + 24) & MASK18;
             if (pathname_size > 168)
               {
@@ -1054,10 +1057,11 @@ fprintf (stderr, "processDirectory 8\n");
             pathname [pathname_size] = 0;
             //printf ("[%s]\n", pathname);
             vtocp -> entries [entry_cnt] . link_target = strdup (pathname);
+dprintf (stderr, "processDirectory 8a entry %d path '%s'\n", entry_cnt, pathname);
           }
         else
           {
-fprintf (stderr, "processDirectory 9\n");
+dprintf (stderr, "processDirectory 9\n");
             char path [8192];
             strcpy (path, vtocp -> fq_name);
             if (strcmp (path, ">") != 0)
@@ -1065,13 +1069,13 @@ fprintf (stderr, "processDirectory 9\n");
             strcat (path, name);
             unfixit (path);
             vtocp -> entries [entry_cnt] . pri_ind = mx_lookup_path (m_data, path);
+dprintf (stderr, "processDirectory 9a entry %d path '%s'\n", entry_cnt, path);
           }
-
         entry_cnt ++;
 next:;
         entryp = efrp;
       }
-fprintf (stderr, "processDirectory 10\n");
+dprintf (stderr, "processDirectory 10\n");
     if (entry_cnt != vtocp -> ent_cnt)
       printf ("entry_cnt %d ent_cnt %d\n", entry_cnt, vtocp -> ent_cnt);
   }
@@ -1100,57 +1104,57 @@ int mx_mount (struct m_state * m_data)
           int offset = label_perm_os;
           word36 w, w2;
 
-          fprintf (stderr, "\nsv %c\n", 'a' + sv);
-          fprintf (stderr, "  label: ");
+          dprintf (stderr, "\nsv %c\n", 'a' + sv);
+          dprintf (stderr, "  label: ");
           for (uint i = 0; i < 8; i++)
             {
               w = extr36 (r0, offset++);
-              fprintf (stderr, "%s", str (w));
+              dprintf (stderr, "%s", str (w));
             }
-          fprintf (stderr, "\n");
+          dprintf (stderr, "\n");
 
           w = extr36 (r0, offset++);
-          fprintf (stderr, "  version: %ld\n", w);
+          dprintf (stderr, "  version: %ld\n", w);
 
-          fprintf (stderr, "  Mfg serial number: ");
+          dprintf (stderr, "  Mfg serial number: ");
           for (uint i = 0; i < 8; i++)
             {
               w = extr36 (r0, offset++);
-              fprintf (stderr, "%s", str (w));
+              dprintf (stderr, "%s", str (w));
             }
-          fprintf (stderr, "\n");
+          dprintf (stderr, "\n");
 
-          fprintf (stderr, "  PV name: ");
+          dprintf (stderr, "  PV name: ");
           for (uint i = 0; i < 8; i++)
             {
               w = extr36 (r0, offset++);
-              fprintf (stderr, "%s", str (w));
+              dprintf (stderr, "%s", str (w));
             }
-          fprintf (stderr, "\n");
+          dprintf (stderr, "\n");
 
-          fprintf (stderr, "  LV name: ");
+          dprintf (stderr, "  LV name: ");
           for (uint i = 0; i < 8; i++)
             {
               w = extr36 (r0, offset++);
-              fprintf (stderr, "%s", str (w));
+              dprintf (stderr, "%s", str (w));
             }
-          fprintf (stderr, "\n");
+          dprintf (stderr, "\n");
 
           w = extr36 (r0, offset++);
-          fprintf (stderr, "  PV id: %012lo\n", w);
+          dprintf (stderr, "  PV id: %012lo\n", w);
 
           w = extr36 (r0, offset++);
-          fprintf (stderr, "  LV id: %012lo\n", w);
+          dprintf (stderr, "  LV id: %012lo\n", w);
 
           w = extr36 (r0, offset++);
-          fprintf (stderr, "  root PV id: %012lo\n", w);
+          dprintf (stderr, "  root PV id: %012lo\n", w);
 
           w = extr36 (r0, offset++);
           w2 = extr36 (r0, offset++);
-          fprintf (stderr, "  time registered: %012lo %012lo\n", w, w2);
+          dprintf (stderr, "  time registered: %012lo %012lo\n", w, w2);
 
           w = extr36 (r0, offset++);
-          fprintf (stderr, "  number of PVs in LV: %ld\n", w);
+          dprintf (stderr, "  number of PVs in LV: %ld\n", w);
 
 
         }
@@ -1192,7 +1196,7 @@ int mx_mount (struct m_state * m_data)
         0145040040040lu
      };
 
-fprintf (stderr, "mx_mount 1\n");
+dprintf (stderr, "mx_mount 1\n");
     for (uint i = 0; i < 8; i ++)
       if (extr36 (r0, label_perm_os + i) != mlabel [i])
       {
@@ -1200,7 +1204,7 @@ fprintf (stderr, "mx_mount 1\n");
         return -2;
       }
 
-fprintf (stderr, "mx_mount 2\n");
+dprintf (stderr, "mx_mount 2\n");
 // Unmounted properly?
 // AN61, pg 14-2 "THis,. if an attempt is made to accept a physical volume
 // for which the value of label.time_map_updated and the value of 
@@ -1210,14 +1214,14 @@ fprintf (stderr, "mx_mount 2\n");
     word36 time_map_upd = extr36 (r0, label_time_map_updated_os);
     word36 time_unmounted = extr36 (r0, label_time_unmounted_os);
 
-    //fprintf (stderr, "Time map updated %012lo\n", time_map_upd);
-    //fprintf (stderr, "Time unmounted   %012lo\n", time_unmounted);
+    dprintf (stderr, "Time map updated %012lo\n", time_map_upd);
+    dprintf (stderr, "Time unmounted   %012lo\n", time_unmounted);
 
     if (time_map_upd != time_unmounted)
       fprintf (stderr, "WARNING: Not dismounted properly\n");
 
-    //fprintf (stderr, "pack PVID %012lo\n", extr36 (r0, label_perm_os + 33));
-    //fprintf (stderr, "pack LVID %012lo\n", extr36 (r0, label_perm_os + 34));
+    dprintf (stderr, "pack PVID %012lo\n", extr36 (r0, label_perm_os + 33));
+    dprintf (stderr, "pack LVID %012lo\n", extr36 (r0, label_perm_os + 34));
 
 #if 0
 // What is the root VTOC index?
@@ -1251,26 +1255,26 @@ fprintf (stderr, "mx_mount 2\n");
     vtoc_header = 4;
 #endif
 
-fprintf (stderr, "mx_mount 3\n");
+dprintf (stderr, "mx_mount 3\n");
     m_data -> total_vtoc_no = 0;
     for (int sv = 0; sv < 3; sv ++)
       {
-fprintf (stderr, "mx_mount 4\n");
+dprintf (stderr, "mx_mount 4\n");
         record vtoch;
         memset (& vtoch, 0, sizeof (record));
         readRecord (m_data -> fd, vtoc_header, sv, & vtoch);
         //word36 n_vtoces = extr36 (vtoch, vtoc_header_n_vtoce_os);
+        //dprintf (stderr, "n_vtoces %lu\n", n_vtoces);
         //word36 n_free_vtoces = extr36 (vtoch, vtoc_header_n_free_vtoce);
         word36 vtoc_last_recno = extr36 (vtoch, vtoc_header_vtoc_last_recno);
-        //fprintf (stderr, "n_vtoces %lu\n", n_vtoces);
     
         word36 vtoc_sz_recs = vtoc_last_recno + 1 - vtoc_origin;
         m_data ->  vtoc_no [sv] = (int) (vtoc_sz_recs * 2);
         m_data -> total_vtoc_no += m_data ->  vtoc_no [sv];
-        //fprintf (stderr, "vtoc_no %lu\n", vtoc_no);
+        dprintf (stderr, "vtoc_no %lu\n", vtoc_no);
       }
 
-fprintf (stderr, "mx_mount 5\n");
+dprintf (stderr, "mx_mount 5\n");
     m_data -> vtoc = calloc (sizeof (struct vtoc), m_data -> total_vtoc_no);
     if (m_data -> vtoc == NULL)
       {
@@ -1283,7 +1287,7 @@ fprintf (stderr, "mx_mount 5\n");
     m_data -> vtoc_cnt = 0;
     for (int sv = 0; sv < 3; sv ++)
       {
-fprintf (stderr, "mx_mount 6\n");
+dprintf (stderr, "mx_mount 6\n");
         for (int i = 0; i < m_data -> vtoc_no [sv]; i ++)
           {
             VTOCE vtoce;
@@ -1320,19 +1324,19 @@ fprintf (stderr, "mx_mount 6\n");
                    else
                      break;
                 m_data -> vtoc [m_data -> vtoc_cnt] .name = strdup (name);
-fprintf (stderr, "mx_mount 6 name: '%s'\n", name);
+dprintf (stderr, "mx_mount 6 name: '%s'\n", name);
               }
             m_data -> vtoc_cnt ++;
           }
       }
 
-fprintf (stderr, "mx_mount 7\n");
+dprintf (stderr, "mx_mount 7\n");
 
 // Build dir_name & fq_name table
 
     for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
-fprintf (stderr, "mx_mount 8\n");
+dprintf (stderr, "mx_mount 8\n");
         char fq_name [4096];
         fq_name [0] = 0;
 
@@ -1363,7 +1367,7 @@ fprintf (stderr, "mx_mount 8\n");
           }
 
         m_data -> vtoc [i] . dir_name = strdup (fq_name);
-fprintf (stderr, "mx_mount 8 dir name: '%s'\n", fq_name);
+dprintf (stderr, "mx_mount 8 dir name: '%s'\n", fq_name);
 
         char name [33];
         name [0] = 0;
@@ -1376,20 +1380,20 @@ fprintf (stderr, "mx_mount 8 dir name: '%s'\n", fq_name);
             break;
         strcat (fq_name, name);
         m_data -> vtoc [i] . fq_name = strdup (fq_name);
-fprintf (stderr, "mx_mount 8 fq name: '%s'\n", fq_name);
+dprintf (stderr, "mx_mount 8 fq name: '%s'\n", fq_name);
       }
 
 // Build directory entries
 
-fprintf (stderr, "mx_mount 9\n");
+dprintf (stderr, "mx_mount 9\n");
     for (int i = 0; i < m_data -> vtoc_cnt; i ++)
       {
-fprintf (stderr, "mx_mount 10\n");
+dprintf (stderr, "mx_mount 10\n");
         if (m_data -> vtoc [i] . attr & 0400000)
           processDirectory (m_data, i);
       }
 
-fprintf (stderr, "mx_mount 11\n");
+dprintf (stderr, "mx_mount 11\n");
     return 0;
   }
 
@@ -1416,11 +1420,11 @@ int mx_lookup_path (struct m_state * m_data , const char * path)
 
 int mx_read (char * buf, size_t size, off_t offset, struct entry * entryp)
   {
-fprintf (stderr, "mx_read size %ld offset %ld\n", size, offset);
+dprintf (stderr, "mx_read size %ld offset %ld\n", size, offset);
     struct m_state * m_data = M_DATA;
 
     uint byte_cnt = (entryp -> bitcnt + 7) / 8;
-fprintf (stderr, "mx_read bitcnt %u byte_cnt %u\n", entryp -> bitcnt, byte_cnt);
+dprintf (stderr, "mx_read bitcnt %u byte_cnt %u\n", entryp -> bitcnt, byte_cnt);
     if (offset > byte_cnt)
       return 0;
 
@@ -1428,7 +1432,7 @@ fprintf (stderr, "mx_read bitcnt %u byte_cnt %u\n", entryp -> bitcnt, byte_cnt);
     if (end > byte_cnt)
       {
         size = byte_cnt - offset;
-fprintf (stderr, "size adjusted to %ld\n", size);
+dprintf (stderr, "size adjusted to %ld\n", size);
       }
     int writ = 0;
     while (size)
@@ -1436,7 +1440,7 @@ fprintf (stderr, "size adjusted to %ld\n", size);
         off_t recno = offset / RECORD_SZ_IN_BYTES;
         off_t recos = offset % RECORD_SZ_IN_BYTES;
         record rdata;
-fprintf (stderr, "recno %lu recos %lu\n", recno, recos);
+dprintf (stderr, "recno %lu recos %lu\n", recno, recos);
         readFileDataRecord (m_data, entryp -> pri_ind, recno, & rdata);
         size_t residue = RECORD_SZ_IN_BYTES - recos;
         uint mv;

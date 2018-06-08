@@ -7,8 +7,10 @@
 
 //#define DEBUG
 
-#ifndef DEBUG
-#define fprintf(foo, bar, ...)
+#ifdef DEBUG
+#define dprintf fprintf
+#else
+#define dprintf(foo, bar, ...)
 #endif
 
 #include "mfs.h"
@@ -115,6 +117,12 @@ static int find_uid (struct m_state * m_data, word36 uid)
     for (int i = 0; i < vtoc_cnt; i ++)
       if (vtoc [i] . uid == uid)
         return i;
+//fprintf (stderr, "find_uid vtoc_cnt %d\n", vtoc_cnt);
+#ifdef DEBUG
+    for (int i = 0; i < vtoc_cnt; i ++)
+      dprintf (stderr, "%5d %012lo\n", i, vtoc [i] . uid);
+#endif
+
     return -1;
   }
 
@@ -122,6 +130,7 @@ static int m_readdir (const char * path, void * buf,
                       fuse_fill_dir_t filler,
                       off_t offset, struct fuse_file_info * fi)
   {
+dprintf (stderr, "m_readdir '%s'\n", path);
     struct stat st;
     memset (& st, 0, sizeof (st));
     int ind = mx_lookup_path (M_DATA, path);
@@ -139,20 +148,28 @@ next:;
     if (offset >= vtocp -> ent_cnt)
       return 0;
 
+dprintf (stderr, "m_readdir offset %ld type %d cnt %d\n", offset, entryp [offset] . type, vtocp -> ent_cnt);
     if (entryp [offset] . type == 7 || // segment
         entryp [offset] . type == 4) // directory
       {
+
+
+// Some segments, like >sl1>config_deck only exist in mounted volumes.
+// If the uid isn't known, skip the entry
         int pri_ind = find_uid (m_data, entryp [offset] . uid);
+dprintf (stderr, "pri_ind %d\n", pri_ind);
         if (pri_ind < 0)
           {
-            printf ("find_uid failed; uid %012lo %s\n", entryp [offset] . uid, entryp [offset] . name);
-            printf ("  path %s\n", path);
-            printf ("  ind %d\n", ind);
-            printf ("  offset %ld\n", offset);
-            printf ("  ent_cnt %d\n", vtocp -> ent_cnt);
-            printf ("  type %d\n", entryp [offset] . type);
+            //printf ("find_uid failed; uid %012lo %s\n", entryp [offset] . uid, entryp [offset] . name);
+            //printf ("  path %s\n", path);
+            //printf ("  ind %d\n", ind);
+            //printf ("  offset %ld\n", offset);
+            //printf ("  ent_cnt %d\n", vtocp -> ent_cnt);
+            //printf ("  type %d\n", entryp [offset] . type);
 
-            return -1;
+            //return -1;
+            offset ++;
+            goto next;
           }
         st . st_mode = 0444;
         st . st_uid = getuid ();;
@@ -165,6 +182,7 @@ next:;
             f = filler (buf, "/", & st, offset + 1);
         else
             f = filler (buf, entryp [offset] . name, & st, offset + 1);
+dprintf (stdout, "filler returned %d\n", f);
         if (f == 0)
           {
             offset ++;
@@ -190,7 +208,7 @@ next:;
             goto next;
           }
       }
-
+dprintf (stderr, "m_readdir returns\n");
     return 0;
   }
 
@@ -268,6 +286,7 @@ static int get_entry (const char * path, int * dindp, int * eindp)
 
 static int m_getattr (const char * path, struct stat * statbuf)
   {
+dprintf (stderr, "m_getattr '%s'\n", path);
     memset (statbuf, 0, sizeof (struct stat));
 // find the directory path
     char s [strlen (path) + 1];
@@ -306,6 +325,8 @@ static int m_getattr (const char * path, struct stat * statbuf)
         statbuf -> st_gid = getgid ();;
         statbuf -> st_nlink = 1;
         statbuf -> st_size = 0;
+dprintf (stderr, "m_getattr is_dir\n");
+
         return 0;
       }
 //log_msg ("getattr lookup of %s found %s\n", path, M_DATA -> vtoc [ind] . fq_name);
@@ -348,6 +369,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
         statbuf -> st_gid = getgid ();;
         statbuf -> st_nlink = 1;
         statbuf -> st_size = 0;
+dprintf (stderr, "m_getattr is_link\n");
         return 0;
       }
 
@@ -388,6 +410,7 @@ static int m_getattr (const char * path, struct stat * statbuf)
             statbuf -> st_size = (entryp [eind] . bitcnt + 7) / 8;
           }
       }
+dprintf (stderr, "m_getattr returns\n");
     return 0;
 
 #if 0
@@ -486,13 +509,13 @@ static int m_readlink (const char * path, char * buf, size_t size)
 
 static int m_open (const char * path, struct fuse_file_info * fi)
   {
-fprintf (stderr, "m_open %s\n", path);
+dprintf (stderr, "m_open %s\n", path);
     int eind, dind;
     int ind = get_entry (path, & dind, & eind);
     if (ind < 0)
       return -ENOENT;
     fi -> fh = (uint64_t) (M_DATA -> vtoc [dind] . entries + eind);
-fprintf (stderr, "m_open ok\n");
+dprintf (stderr, "m_open ok\n");
     return 0;
   }
  
