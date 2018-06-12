@@ -957,15 +957,19 @@ dprintf (stderr, "processDirectory 1a\n");
     if (type_size != 0000003000100lu)
       {
 dprintf (stderr, "processDirectory 1b\n");
-        fprintf (stderr, "error in dir header type/size for ind %d\n", ind);
-        return;
+        fprintf (stderr, "error in dir header type/size for ind %d %012lo\n", ind, type_size);
+        // Seen in mounted disks...
+        if (type_size != 0)
+          return;
       }
 dprintf (stderr, "processDirectory 1c\n");
     word36 vtocx_vers = readFileDataWord36 (m_data, ind, 13);
     if ((vtocx_vers & MASK18) != 2)
       {
 dprintf (stderr, "processDirectory 1d\n");
-        fprintf (stderr, "error in dir header version for ind %d\n", ind);
+        fprintf (stderr, "error in dir header version for ind %d %012lo\n", ind, vtocx_vers);
+        // Seen in mounted disks...
+        if (vtocx_vers != 0)
         return;
       }
 
