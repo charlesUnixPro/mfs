@@ -1101,6 +1101,22 @@ int mx_lookup_path (struct m_state * m_data , const char * path)
     return -1;
   }
 
+static int find_uid (struct m_state * m_data, word36 uid)
+  {
+    int vtoc_cnt = m_data -> vtoc_cnt;
+    struct vtoc * vtoc = m_data -> vtoc;
+    for (int i = 0; i < vtoc_cnt; i ++)
+      if (vtoc [i] . uid == uid)
+        return i;
+//fprintf (stderr, "find_uid vtoc_cnt %d\n", vtoc_cnt);
+#ifdef DEBUG
+    for (int i = 0; i < vtoc_cnt; i ++)
+      dprintf (stderr, "%5d %012lo\n", i, vtoc [i] . uid);
+#endif
+
+    return -1;
+  }
+
 static void processDirectory (struct m_state * m_data, int ind)
   {
 printf ("  %s\n", m_data->vtoc[ind].fq_name);
@@ -1108,12 +1124,14 @@ printf ("  %s\n", m_data->vtoc[ind].fq_name);
     word36 type_size = readFileDataWord36 (m_data, ind, 1);
     if (type_size != 0000003000100lu)
       {
-        fprintf (stderr, "error in dir header type/size for ind %d\n", ind);
-        return;
+        printf ("error in dir header type/size for ind %d %012lo\n", ind, type_size);
+        fprintf (stderr, "error in dir header type/size for ind %d %012lo\n", ind, type_size);
+        //return;
       }
     word36 vtocx_vers = readFileDataWord36 (m_data, ind, 13);
     if ((vtocx_vers & MASK18) != 2)
       {
+        printf ("error in dir header version for ind %d %012lo\n", ind, vtocx_vers);
         fprintf (stderr, "error in dir header version for ind %d\n", ind);
         return;
       }
@@ -1172,45 +1190,51 @@ printf ("     seg_cnt %d dir_cnt %d lnk_cnt %d ent_cnt %d entryfrp %d\n", vtocp 
           else
             break;
 
-printf ("    entryp: %d type: %d uid: %012lo name: '%s'\n", entryp, type, uid, name);
-// 4 directory
-// 5 link
-// 7 segment
-        if (type != 7 && type != 4 && type !=5)
-          printf ("    %d %s\n", type, name);
-        vtocp -> entries [entry_cnt] . name = strdup (name);
-        vtocp -> entries [entry_cnt] . uid = uid;
-        vtocp -> entries [entry_cnt] . type = type;
-        word36 bc = readFileDataWord36 (m_data, ind, entryp + 32);
-        vtocp -> entries [entry_cnt] . bitcnt = bc & MASK24;
-
-        if (type == 5) // link
+        if (find_uid (m_data, uid) < 0)
           {
-            word18 pathname_size = readFileDataWord36 (m_data, ind, entryp + 24) & MASK18;
-            if (pathname_size > 168)
-              {
-                fprintf (stderr, "pathname_size %u truncated\n", pathname_size);
-                pathname_size = 168;
-              }
-            char pathname [169];
-            pathname [0] = 0;
-            for (int j = 0; j < 42; j ++)
-              strcat (pathname, str (readFileDataWord36 (m_data, ind, entryp + 25 + j)));
-            pathname [pathname_size] = 0;
-            //printf ("[%s]\n", pathname);
-            vtocp -> entries [entry_cnt] . link_target = strdup (pathname);
+            printf ("    virtual file entryp: %d type: %d uid: %012lo name: '%s'\n", entryp, type, uid, name);
           }
         else
           {
-            char path [8192];
-            strcpy (path, vtocp -> fq_name);
-            if (strcmp (path, ">") != 0)
-              strcat (path, ">");
-            strcat (path, name);
-            unfixit (path);
-            vtocp -> entries [entry_cnt] . pri_ind = mx_lookup_path (m_data, path);
-          }
+            printf ("    entryp: %d type: %d uid: %012lo name: '%s'\n", entryp, type, uid, name);
+// 4 directory
+// 5 link
+// 7 segment
+            if (type != 7 && type != 4 && type !=5)
+              printf ("    %d %s\n", type, name);
+            vtocp -> entries [entry_cnt] . name = strdup (name);
+            vtocp -> entries [entry_cnt] . uid = uid;
+            vtocp -> entries [entry_cnt] . type = type;
+            word36 bc = readFileDataWord36 (m_data, ind, entryp + 32);
+            vtocp -> entries [entry_cnt] . bitcnt = bc & MASK24;
 
+            if (type == 5) // link
+              {
+                word18 pathname_size = readFileDataWord36 (m_data, ind, entryp + 24) & MASK18;
+                if (pathname_size > 168)
+                  {
+                    fprintf (stderr, "pathname_size %u truncated\n", pathname_size);
+                    pathname_size = 168;
+                  }
+                char pathname [169];
+                pathname [0] = 0;
+                for (int j = 0; j < 42; j ++)
+                  strcat (pathname, str (readFileDataWord36 (m_data, ind, entryp + 25 + j)));
+                pathname [pathname_size] = 0;
+                //printf ("[%s]\n", pathname);
+                vtocp -> entries [entry_cnt] . link_target = strdup (pathname);
+              }
+            else
+              {
+                char path [8192];
+                strcpy (path, vtocp -> fq_name);
+                if (strcmp (path, ">") != 0)
+                  strcat (path, ">");
+                strcat (path, name);
+                unfixit (path);
+                vtocp -> entries [entry_cnt] . pri_ind = mx_lookup_path (m_data, path);
+              }
+          }
         entry_cnt ++;
 next:;
         entryp = efrp;
@@ -1534,8 +1558,21 @@ static int mx_mount (struct m_state * m_data)
             VTOCE vtoce;
             readVTOCE (m_data, i, sv, & vtoce);
             word36 uid = vtoce [1];
+printf ("sv %d vtocno %d uid %012lo\n", sv, i, uid);
             if (! uid)
               {
+#if 0
+                char name [33 + 100];
+                name [0] = 0;
+                for (int j = 0; j < 8; j ++)
+                   strcat (name, str (vtoce [vtoce_primary_name_os + j]));
+                for (int j = strlen (name) - 1; j >= 0; j --)
+                   if (name [j] == ' ')
+                     name [j] = 0;
+                   else
+                     break;
+                printf ("   %s\n", name);
+#endif
                 //printf ("   %5d [%o:%d] <emtpy>\n", i, vtoce_recnum, vtoce_offset);
                 continue;
               }
